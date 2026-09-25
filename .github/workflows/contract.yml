@@ -1,0 +1,15 @@
+name: source-contract
+on: [push, pull_request]
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: python -m pip install -e '.[contract]' build
+      - run: python -m pytest tests/public -q
+      - run: python -m compileall -q dexlearn tests scripts
+      - run: bash -n dexlearn/scripts/launch_multi_train.sh
+      - run: python -m build

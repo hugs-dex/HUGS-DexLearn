@@ -1,0 +1,144 @@
+human: true
+factorization: reverse_T_to_C
+
+batch_size: 256
+max_iter: 10000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 2500
+val_num: 10
+save_every: 2500
+grad_clip: 10.0
+
+training:
+  mode: reverse_independent_from_scratch
+  # both | pose_marginal | type_posterior
+  run: both
+  pose_marginal:
+    exp_suffix: pose_marginal
+    max_iter: 10000
+    save_every: 2500
+    val_every: 2500
+    lr: 0.001
+    lr_min: 0.0001
+  type_posterior:
+    exp_suffix: type_posterior
+    max_iter: 300
+    save_every: 50
+    val_every: 50
+    lr: 0.001
+    lr_min: 0.0001
+
+test_grasp_num: 100
+test_topk: 20
+
+sample_selection:
+  enabled: true
+  scope: global
+  mode: prob_pose
+  intermediate_topk: 50
+  translation_scale_m: 0.05
+  rotation_weight: 1.0
+
+reverse_sampling:
+  marginal_pool_size: 500
+  conditional_candidate_num: ${algo.test_grasp_num}
+  resampling_policy: weighted_without_replacement
+  resampling_seed: ${seed}
+  include_raw_pool: true
+  ess_warning_threshold: 20.0
+
+posterior_contract:
+  training_pose_source: gt_clean_canonical_t24
+  inference_pose_source: generated_marginal_canonical_t24
+  train_inference_gap: gt_pose_to_generated_pose
+
+models:
+  pose_marginal:
+    name: MarginalPoseDiffusionModel
+    backbone:
+      name: WrappedMinkUNet
+      out_feat_dim: 1024
+      voxel_size: 0.005
+    head:
+      name: DiffusionBiRT_v2
+      in_feat_dim:
+      diffusion:
+        ode: 1
+        scheduler_type: DDIMScheduler
+        scheduler:
+          beta_schedule: squaredcos_cap_v2
+          prediction_type: v_prediction
+          num_train_timesteps: 128
+          clip_sample: false
+        num_inference_timesteps: 10
+        log_prob_type: accurate_cont
+        loss_type: l1
+  type_posterior:
+    name: PoseConditionedTypeModel
+    type_objective: ce
+    backbone:
+      name: WrappedMinkUNet
+      out_feat_dim: 1024
+      voxel_size: 0.005
+    pose_normalization:
+      max_update: 2000
+    pose_encoder:
+      hidden_dims: [64, 128]
+    object_projection:
+      out_feat_dim: 128
+    fusion_classifier:
+      hidden_dim: 128
+
+# Default single-model tasks such as task=sample load the marginal pose branch.
+model:
+  name: MarginalPoseDiffusionModel
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  head:
+    name: DiffusionBiRT_v2
+    in_feat_dim:
+    diffusion:
+      ode: 1
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: false
+      num_inference_timesteps: 10
+      log_prob_type: accurate_cont
+      loss_type: l1
+
+supervision:
+  scope: record
+  negative_policy: softmax
+  balancing:
+    enabled: false
+    sampler:
+      enabled: false
+      alpha: 1.0
+      object_uniform: true
+    loss_weight:
+      enabled: false
+      beta: 0.0
+      reference: data
+
+loss_weight:
+  loss_diffusion: 1.0
+  loss_type: 1.0
+
+freeze:
+  backbone: false
+  type_classifier: false
+  grasp_type_emb: false
+  output_head: false
+
+ckpt_load:
+  load_optimizer: true
+  reset_iter: false
+  strict_model: true
+  ignore_prefixes: []

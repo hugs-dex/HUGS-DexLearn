@@ -1,0 +1,84 @@
+human: False
+
+batch_size: 256
+max_iter: 50000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 1000
+val_num: 10
+save_every: 5000
+grad_clip: 10.0
+
+# Number of diffusion candidates generated for each requested real grasp type.
+# With availability sampling and grasp_type_id=0, the model generates this many
+# candidates for each real type 1..5 before optional filtering.
+test_grasp_num: 100
+
+# Number of candidates kept when sample_selection.enabled=true.
+# scope=global: keep this many candidates for the whole scene.
+# scope=per_type: keep this many candidates for each available grasp type.
+test_topk: 10
+
+sample_selection:
+  # false: save all valid candidates after availability filtering.
+  # In availability mode this means available_type_count * test_grasp_num
+  # saved grasps for grasp_type_id=0.
+  # true: run an additional selection step controlled by scope/mode below.
+  enabled: true
+  # Used only when enabled=true.
+  # global keeps the legacy behavior: all available types share one candidate
+  # pool, so each scene saves test_topk grasps.
+  # per_type selects inside each grasp type independently, so each scene saves
+  # available_type_count * test_topk grasps.
+  scope: per_type
+  # Used only when enabled=true.
+  # topk/prob ranks candidates by diffusion log_prob. random chooses candidates
+  # uniformly from the valid pool. pose_diversity, pose_prob, and prob_pose are
+  # supported only for scope=global.
+  mode: topk
+  # Pose-diversity options are ignored for mode=topk/prob/random.
+  translation_scale_m: 0.05
+  rotation_weight: 1.0
+  intermediate_topk:
+
+model:
+  name: HierarchicalModel
+  type_objective: availability
+  type_availability:
+    score_threshold: 0.9
+    min_available_types: 1
+    use_score_prior: true
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  grasp_type_emb:
+    name: LearnableTypeCond
+    in_feat_dim: ${..backbone.out_feat_dim}
+    out_feat_dim: 128
+    use_predictor: false
+    disabled: false
+  head:
+    name: DiffusionBiRT_MLPRTJ
+    in_feat_dim:
+    joint_num: ${....data.model.joint_num}
+    traj_length: ${....data.model.traj_length}
+    diffusion:
+      ode: 1
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: False
+      num_inference_timesteps: 10
+      log_prob_type: accurate_cont
+      loss_type: l1
+
+loss_weight:
+  loss_diffusion: 1.0
+  loss_type: 1.0
+  loss_trans: 1.0
+  loss_rot: 1.0
+  loss_joint: 1.0

@@ -1,0 +1,76 @@
+human: true
+dataset_type: HumanMultiDexDataset
+
+available_views:
+  record: true
+  sequence: true
+  object: true
+
+runtime:
+  num_workers: 10
+
+paths:
+  # Public input bundles are read-only; set an external cache path explicitly if needed.
+  pose_group_cache_path: ""
+  grasp_path: ${data_root}/OurHumanGraspFormat/grasp
+  object_path: ${data_root}/OurHumanGraspFormat/object
+  split_path: valid_split
+  pc_path: vision_data/complete_pc
+  metadata_path: ${data_root}/OurHumanGraspFormat/metadata.csv
+
+point_cloud:
+  num_points: 1024
+  # If true, one grasp can condition on any point cloud from the same canonical object.
+  # If false, the point cloud must match the grasp sequence id.
+  random_pc_across_sequences: false
+
+sampling:
+  # Training object split loaded from paths.split_path. Use "all" when
+  # training Human Prior on the full human dataset via all.json.
+  train_split: train
+  # record_uniform matches the empirical record distribution. object_uniform
+  # first samples canonical objects uniformly, then records within each object.
+  # posed_object_uniform first samples canonical objects uniformly, then posed
+  # object groups uniformly, then one concrete grasp record from that group.
+  # None of these modes directly reweights grasp types.
+  train_unit: record_uniform
+  # When true, grasp-type CE uses the sampled record's posed-object group
+  # distribution from metadata.csv instead of the record hard label.
+  pose_group_soft_labels: true
+
+augmentation:
+  pc_centering: true
+  z_rotation: true
+  xy_rotation:
+    enabled: true
+    max_angle_deg: 3.0
+  translation:
+    enabled: false
+    range: 0.02
+  # Uniformly scales the centered object point cloud and active hand translations.
+  scale:
+    enabled: true
+    min: 0.9
+    max: 1.1
+  pc_noise:
+    enabled: true
+    scale: 0.001
+    clip_multiplier: 3.0
+  point_dropout:
+    # Human Prior ablations consistently used light point dropout to reduce
+    # point-cloud overfitting while preserving object geometry.
+    enabled: true
+    ratio: 0.1
+
+human_hand:
+  position_source: index_mcp # wrist or index_mcp
+  load_mano_params: false
+
+# Compatibility aliases for command-line overrides and older call sites.
+hand_pos_source: ${.human_hand.position_source}
+load_mano_params: ${.human_hand.load_mano_params}
+
+test:
+  split: test
+  scene_cfg: ["**/*.npy", "*.npy"]
+  mini: false

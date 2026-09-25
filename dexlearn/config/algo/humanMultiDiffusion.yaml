@@ -1,0 +1,48 @@
+human: True
+
+batch_size: 256
+max_iter: 50000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 1000
+val_num: 10
+save_every: 5000
+grad_clip: 10.0
+
+test_grasp_num: 100
+test_topk: 10
+
+model:
+  name: BaseModel
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  grasp_type_emb:
+    name: LearnableTypeCond
+    in_feat_dim: ${..backbone.out_feat_dim}
+    out_feat_dim: 128
+    use_predictor: false
+    disabled: true
+  head:
+    name: DiffusionTypeAndBiRT
+    in_feat_dim:
+    # DiffusionTypeAndBiRT models wrist poses and types, not joint trajectories.
+    diffusion:
+      ode: 1
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: False
+      num_inference_timesteps: 10
+      log_prob_type: accurate_cont
+      loss_type: l1
+
+loss_weight:
+  loss_diffusion: 1.0
+  loss_trans: 1.0
+  loss_rot: 1.0
+  loss_joint: 1.0

@@ -1,0 +1,15 @@
+name: ${test_data_name}
+human: False
+dataset_type: DexDataset
+
+num_points: 1024
+grasp_type_lst: [""]
+grasp_type_cond: False
+pc_centering: True
+
+object_path: ${data_folder}/object/DGN_2k
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/azure_kinect_dk    # relative to object_path
+test_split: test
+test_scene_cfg: floating/**.npy
+mini_test: False

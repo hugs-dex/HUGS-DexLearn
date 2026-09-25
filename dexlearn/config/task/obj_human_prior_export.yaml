@@ -1,0 +1,59 @@
+name: obj_human_prior_export
+
+# Export every configured object split. DGN assets provide train/test splits; using
+# both here covers the full object asset set used by downstream BODex synthesis.
+object_splits:
+  - all
+
+# One score pass predicts the 5 real grasp-type budget scores for each scene.
+# Joint and strict Independent export use this pass only to enumerate scenes;
+# the placeholder type is not consumed by their sampling models.
+score_grasp_types:
+  - 0_any
+
+# One fixed-type pose pass generates pose candidates for each real type, then
+# filters them with algo.sample_selection in the same way as task=sample.
+pose_grasp_types:
+  - 1_right_two
+  - 2_right_three
+  - 3_right_full
+  - 4_both_three
+  - 5_both_full
+
+# Kept as the exported per-type sample count for compatibility with existing
+# scene files. It must match algo.test_topk.
+samples_per_type: ${algo.test_topk}
+output_dir:
+quat_norm_tol: 0.001
+
+# Robot-specific export namespace and hand-size ratio. robot_size rescales test
+# point clouds by 1 / robot_size for inference, then maps generated translations
+# back to physical scene units before saving.
+robot_name: shadow_hand
+robot_size: 1.0
+
+# Optional independent-network export inputs. When these are left empty, one
+# checkpoint from the top-level exp_name/ckpt is used for both type scores and
+# pose generation. For independent_from_scratch runs, set score_* to the
+# *_type branch and pose_* to the *_diffusion branch. If score_ckpt and
+# pose_ckpt are both set, the top-level ckpt override is not used by this task.
+# Strict humanMultiIndependent defaults to *_mode_marginal and *_pose_marginal.
+score_exp_name:
+score_ckpt:
+pose_exp_name:
+pose_ckpt:
+
+# Reusing completed scene files is important for long exports that may be
+# interrupted. A scene is skipped only when its existing .npy file passes the
+# current shape, field, and quaternion checks.
+skip_existing: false
+
+# Keep the default export focused on the BODex-facing prior. If the trained
+# human model uses hand_pos_source=index_mcp, the export stores index_mcp_pos
+# directly and does not run MANO to infer wrist_pos.
+include_log_prob: false
+include_grasp_pose: false
+
+# Throughput is controlled by the global dataloader/model overrides. Increase
+# algo.batch_size until GPU memory is close to full; then raise num_workers if
+# point-cloud loading becomes the bottleneck.

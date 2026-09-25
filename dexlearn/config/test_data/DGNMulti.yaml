@@ -1,0 +1,38 @@
+name: ${test_data_name}
+dataset_type: RobotMultiDexDataset
+human: False
+
+num_points: 1024
+
+preload_point_clouds: True
+# Sample every explicit human prior type by default for fixed-type pose evaluation.
+# Override with ["0_any"] when exporting type-prior scores only.
+grasp_type_lst: ["1_right_two", "2_right_three", "3_right_full", "4_both_three", "5_both_full"]
+pc_centering: True
+# Runtime-only scale for test/inference point clouds. obj_human_prior_export
+# sets this to 1 / task.robot_size for robot-specific human prior inference.
+pc_runtime_scale: 1.0
+
+object_path: ${data_folder}/object/DGN_2k
+split_path: valid_split   # relative to object_path
+
+pc_source: complete   # 'partial' for partial_pc**.npy, 'complete' for processed_data/<obj>/complete_point_cloud.npy
+pc_path: vision_data/azure_kinect_dk    # relative to object_path, now used for 'partial' pc
+
+test_split: test
+test_scene_cfg: tabletop_ur10e/**.npy
+mini_test: False
+
+# Optional deterministic random subset for quick sample/evaluation runs.
+# Example: test_data.test_object_num=100 test_data.test_subset_seed=7
+# ``test_scene_num`` is applied after scene cfg files are collected from the
+# selected objects. Leave values <= 0 to keep the full test split.
+test_object_num: 0
+test_scene_num: 0
+test_subset_seed: 0
+
+# Optional exact scene whitelist for bounded export/evaluation. The JSON may be
+# a plain list or an object with ``scene_paths`` and optional ``scene_count``.
+# Entries are relative to ``<object_path>/scene_cfg`` unless absolute. This is
+# mutually exclusive with ``test_scene_num``.
+test_scene_list_path:

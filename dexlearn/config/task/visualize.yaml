@@ -1,0 +1,41 @@
+mode: auto
+split: test  # Initial dataset split for human viser UI: train or test.
+
+# Sample selection. With task.visualizer=viser, the web UI Selection panel can switch these at runtime.
+visualize_mode: one_object  # random_objects, one_object, one_object_multi_seq, grasp_type
+max_grasps: 20
+# Robot one_scene pages show at most this many grasps for each real grasp type.
+# Remaining grasps in the same scene are shown by clicking Next Batch.
+one_scene_max_grasps_per_type: 5
+object_id: obj_0_seq_0
+target_grasp_type_id: 1
+
+# Optional robot source point-cloud file. When set, task=visualize indexes
+# only saved grasps generated from this file instead of scanning the full
+# saved sample directory. The value may be absolute, relative to
+# test_data.object_path/test_data.pc_path, or scene_id/partial_pc_x.npy.
+target_pc_file:
+
+num_samples_per_group: 20
+include_groups:
+
+visualizer: viser
+viser_port: 8080
+viser_scene_spacing: 0.5
+viser_display_mode: all
+viser_scene_id: 0
+
+camera_distance: 1.0
+show_ik_status: true
+# Robot Viser upload optimization. When true, right-hand-only grasp types
+# (1_right_two, 2_right_three, 3_right_full) upload only right-hand robot mesh.
+# Bimanual grasp types still upload both hands.
+hide_inactive_single_hand_mesh: true
+# Robot mesh visual scope for Viser:
+#   full       - upload the selected active hand/full bimanual visual mesh.
+#   fingertips - upload only fingertip visual links for the selected active hands.
+robot_mesh_visual_scope: fingertips
+
+robot_urdf_path: ${asset_root}/robot/shadow_hand/dual_dummy_arm_shadow.urdf
+robot_mesh_dir_path: ${asset_root}/robot/shadow_hand
+metadata_group: both_full

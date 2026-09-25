@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "name": "HUGS-DexLearn",
+  "version": "0.1.0",
+  "status": "local_source_contract_candidate",
+  "release_scope": "source + contract",
+  "research_only": true,
+  "license_work": "out_of_scope_by_owner_request",
+  "features_retained": [
+    "Shadow",
+    "Leap-SP",
+    "Leap compatibility",
+    "Human Prior Proposed/Independent/Joint/Reverse/Legacy",
+    "scene budget",
+    "all legacy algorithm configs",
+    "train/sample/export/evaluate/visualize",
+    "multi-worker launchers"
+  ],
+  "type_ids": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "hand_order": [
+    "right",
+    "left"
+  ],
+  "position_unit": "metre",
+  "quaternion_order": "wxyz",
+  "data_root_env": "ANYSCALEGRASP_DATA_ROOT",
+  "legacy_data_root_env": "AnyScaleGraspDataset",
+  "asset_root_env": "HUGS_ASSET_ROOT",
+  "mano_root_env": "MANO_ROOT",
+  "dependencies": "dependencies.json",
+  "verification": "../docs/validation.md",
+  "not_run": [
+    "training",
+    "GPU runtime/build",
+    "real multi-GPU",
+    "pretrained checkpoint inference",
+    "MANO forward",
+    "interactive visualization",
+    "end-to-end synthesis",
+    "remote CI"
+  ],
+  "artifact_distribution": {
+    "git_lfs": false,
+    "hugging_face_uploads": false,
+    "datasets_in_git": false,
+    "weights_in_git": false
+  },
+  "consumer_contract": "bimanbodex_existing_human_prior_v1",
+  "code_version_policy": "The accompanying external validation record pins the final Git commit; no private source history is included."
+}

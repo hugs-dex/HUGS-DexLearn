@@ -1,0 +1,44 @@
+human: false
+dataset_type: RobotMultiDexDataset
+
+runtime:
+  num_workers: 10
+
+model:
+  traj_length: 3
+  joint_num: 44 # bimanual shadow hands
+
+paths:
+  grasp_path: ${data_root}/human_DGN2k_full/shadow
+  object_path: ${data_root}/object/DGN_2k
+  split_path: valid_split
+  pc_path: vision_data/three_realsense_d435_random4096
+
+point_cloud:
+  # Number of object point-cloud points sampled per dataset item.
+  num_points: 1024
+  # Options: true loads indexed point-cloud files into memory at dataset init;
+  # false loads point clouds lazily in __getitem__ and is better for quick debug runs.
+  preload: true
+  # Options:
+  #   partial  - use paths.pc_path/<scene_id>/partial_pc**.npy.
+  #   complete - use object processed_data/<object_id>/complete_point_cloud.npy
+  #              and transform it into the scene frame with scene_cfg.
+  source: partial
+
+type_availability:
+  enabled: true
+  min_count: 1
+  min_ratio: 0.05
+
+augmentation:
+  pc_centering: true
+  rotation: true
+  pc_noise:
+    enabled: false
+    scale: 0.002
+
+robot:
+  urdf_path: ${asset_root}/robot/shadow_hand/dual_dummy_arm_shadow.urdf
+  mesh_dir_path: ${asset_root}/robot/shadow_hand
+  metadata_group: both_full

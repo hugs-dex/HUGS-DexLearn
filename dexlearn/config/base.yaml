@@ -1,0 +1,56 @@
+data_root: ${oc.env:ANYSCALEGRASP_DATA_ROOT,${oc.env:AnyScaleGraspDataset,assets}}
+asset_root: ${oc.env:HUGS_ASSET_ROOT,assets}
+mano_root: ${oc.env:MANO_ROOT,assets/mano}
+output_folder: ${oc.env:HUGS_OUTPUT_ROOT,output}
+data_folder: ${data_root}
+exp_name: example
+ckpt:       # ckpt path to load, only need the number
+resume: True
+
+seed: 0
+device: 'cuda:0'
+num_workers: 8
+persistent_workers: true
+prefetch_factor: 2
+
+##########################
+# other config yamls
+##########################
+
+defaults:
+  - _self_
+  - task: sample
+  - algo: humanMultiHierar
+  - data: humanMulti
+  - test_data: humanMulti # object dataset for testing/visualization
+
+task_name: ${hydra:runtime.choices.task}
+algo_name: ${hydra:runtime.choices.algo}
+data_name: ${hydra:runtime.choices.data}
+test_data_name: ${hydra:runtime.choices.test_data}
+
+hydra:
+  run:
+    dir: ${...output_folder}/${...data_name}_${...algo_name}_${...exp_name}
+
+
+##########################
+# wandb logging
+##########################
+wandb:
+  folder: ${output_folder}
+  group: ${algo_name}
+  id: ${data_name}_${algo_name}_${exp_name}
+  mode: disabled
+  project: HUGS-DexLearn
+  resume: ${resume}
+
+timing:
+  enabled: false
+  cuda_sync: true
+
+model_registry:
+  enabled: false
+  path: ${output_folder}/trained_models.md
+  # Optional short note supplied by CLI override, e.g. model_registry.key_features="scale augmentation".
+  key_features:

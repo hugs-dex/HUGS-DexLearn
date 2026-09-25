@@ -1,0 +1,25 @@
+name: ${test_data_name}
+dataset_type: RobotMultiDexDataset
+human: False
+
+num_points: 1024
+traj_length: 3
+joint_num: 32 # bimanual leap hands
+
+preload_point_clouds: True
+grasp_type_lst: ["0_any"]
+pc_centering: True
+
+grasp_path: ${data_root}/BimanBODex_1k/leap
+object_path: ${data_root}/object/DGN_2k
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/azure_kinect_dk    # relative to object_path
+
+test_split: test
+test_scene_cfg: tabletop_ur10e/**.npy
+mini_test: False
+
+# only for visualization
+robot_urdf_path: ${asset_root}/robot/leap_hand/dual_dummy_arm_leap.urdf
+robot_mesh_dir_path: ${asset_root}/robot/leap_hand
+metadata_group: both_full

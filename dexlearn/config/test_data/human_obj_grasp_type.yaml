@@ -1,0 +1,15 @@
+name: ${test_data_name}
+human: True
+dataset_type: HumanBiDexDataset
+
+num_points: 1024
+grasp_type_lst: ["0_right", "1_left", "2_both"]
+grasp_type_cond: True
+pc_centering: True
+
+object_path: ${data_root}/GRAB/object
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/complete_pc    # relative to object_path
+test_split: test
+test_scene_cfg: "**/*.npy"
+mini_test: False

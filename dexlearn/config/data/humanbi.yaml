@@ -1,0 +1,19 @@
+human: True
+dataset_type: HumanBiDexDataset
+num_workers: 10
+
+num_points: 1024
+traj_length: 3
+joint_num: 16
+grasp_type_lst: ["0_right", "1_left", "2_both"]
+grasp_type_cond: True
+pc_centering: True
+
+grasp_path: ${data_root}/GRAB/grasp
+object_path: ${data_root}/GRAB/object
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/complete_pc    # relative to object_path
+
+test_split: test
+test_scene_cfg: ["**/*.npy", "*.npy"]
+mini_test: False

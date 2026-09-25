@@ -1,0 +1,28 @@
+name: robot_type_eval
+
+# Score threshold used to binarize predicted availability scores.
+# This remains the selected threshold shown in per_scene.csv and the main
+# selected-threshold table.
+threshold: 0.5
+
+# Optional explicit sweep values. Leave empty to use threshold_min/max/step.
+thresholds: []
+
+# Default threshold sweep grid for choosing a feasible type threshold.
+threshold_min: 0.0
+threshold_max: 1.0
+threshold_step: 0.05
+
+# Ground-truth object split used to index full robot grasp data.
+gt_split: test
+
+# Optional real grasp types excluded from macro metrics and output tables.
+# Example paper protocol: [both_three]
+exclude_grasp_types: []
+
+# Empty means write to:
+# <output_folder>/<wandb.id>/tests/<ckpt_step>/robot_type_eval
+output_dir:
+
+# Set >0 for quick debug runs.
+max_batches: 0

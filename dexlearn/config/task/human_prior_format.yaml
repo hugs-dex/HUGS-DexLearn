@@ -1,0 +1,3 @@
+include_groups:
+output_suffix: human_prior_format
+mano_root: ${mano_root}

@@ -1,0 +1,6 @@
+include_patterns:
+  - "**/*.npy"
+overwrite: true
+dry_run: false # only run without saving the processed data, for debugging
+max_files:
+mano_root: ${mano_root}

@@ -1,0 +1,13 @@
+include README.md RESEARCH_ONLY.md CITATION.cff CONTRIBUTING.md .gitmodules
+recursive-include docs *.md
+recursive-include scripts *.py
+recursive-include tests *.py
+recursive-include releases *.json *.txt
+recursive-include dexlearn/config *.yaml
+recursive-include dexlearn/scripts *.sh
+prune third_party
+prune assets
+prune output
+prune build
+prune dist
+global-exclude __pycache__ *.pyc *.pth *.pt *.pkl *.npy *.npz *.so

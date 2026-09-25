@@ -1,0 +1,46 @@
+{
+  "dependencies": [
+    {
+      "name": "nflows",
+      "url": "https://github.com/nkolot/nflows.git",
+      "commit": "26388ed7780e7548ab1a7803ec50b0f0b779f254",
+      "anonymous_commit_http": 200,
+      "returned_sha": "26388ed7780e7548ab1a7803ec50b0f0b779f254"
+    },
+    {
+      "name": "MinkowskiEngine",
+      "url": "https://github.com/NVIDIA/MinkowskiEngine.git",
+      "commit": "5e418f84c443b1dc0606f9a1e1edf25b9eec9f59",
+      "anonymous_commit_http": 200,
+      "returned_sha": "5e418f84c443b1dc0606f9a1e1edf25b9eec9f59"
+    },
+    {
+      "name": "diffusers",
+      "url": "https://github.com/huggingface/diffusers.git",
+      "commit": "599c887164a83b3450a7c2e640ddb86d63c0d518",
+      "anonymous_commit_http": 200,
+      "returned_sha": "599c887164a83b3450a7c2e640ddb86d63c0d518"
+    },
+    {
+      "name": "manopth",
+      "url": "https://github.com/DexGrasp-TH/manopth.git",
+      "commit": "dd83a157dccd4479edda7a0612db288df81dfeb7",
+      "anonymous_commit_http": 200,
+      "returned_sha": "dd83a157dccd4479edda7a0612db288df81dfeb7"
+    },
+    {
+      "name": "utils_python",
+      "url": "https://github.com/Mingrui-Yu/utils_python.git",
+      "commit": "18a42f8d8183e3d8c5a2e85efb76763fe36223a5",
+      "anonymous_commit_http": 200,
+      "returned_sha": "18a42f8d8183e3d8c5a2e85efb76763fe36223a5"
+    },
+    {
+      "name": "pytorch_kinematics",
+      "url": "https://github.com/DexGrasp-TH/pytorch_kinematics.git",
+      "commit": "b7d87b1d01bd7db91ca17f5269abe6d365f3e646",
+      "anonymous_commit_http": 200,
+      "returned_sha": "b7d87b1d01bd7db91ca17f5269abe6d365f3e646"
+    }
+  ]
+}

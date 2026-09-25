@@ -1,0 +1,95 @@
+human: true
+factorization: joint_C_T
+
+batch_size: 256
+max_iter: 10000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 2500
+val_num: 10
+save_every: 2500
+grad_clip: 10.0
+
+training:
+  mode: joint_coupled_diffusion
+
+# The raw pool matches the Proposed baseline's five modes times 100 candidates.
+test_grasp_num: 100
+test_topk: 20
+
+sample_selection:
+  enabled: true
+  scope: global
+  mode: prob_pose
+  intermediate_topk: 50
+  translation_scale_m: 0.05
+  rotation_weight: 1.0
+
+joint_sampling:
+  pool_size: 500
+  candidate_cap: ${algo.test_grasp_num}
+  sampling_seed: ${seed}
+  include_raw_pool: true
+  raw_artifact_format: npz
+  zero_support_policy: finite_placeholder
+  low_support_policy: deterministic_replacement
+
+model:
+  name: JointHybridDiffusionModel
+  type_objective: ce
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  head:
+    name: JointCategoricalPoseDiffusion
+    in_feat_dim:
+    pose_normalization:
+      max_update: 2000
+    denoiser:
+      object_feat_dim:
+      object_projection_dim: 256
+      category_embedding_dim: 64
+      pose_projection_dim: 128
+      time_embedding_dim: 128
+      trunk_width: 512
+      trunk_blocks: 4
+    diffusion:
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: false
+      num_inference_timesteps: 10
+      loss_type: l1
+      continuous_path_score_weight: 1.0
+
+supervision:
+  scope: record
+  negative_policy: softmax
+  balancing:
+    enabled: false
+    sampler:
+      enabled: false
+      alpha: 1.0
+      object_uniform: true
+    loss_weight:
+      enabled: false
+      beta: 0.0
+      reference: data
+
+loss_weight:
+  loss_pose_v: 1.0
+  loss_categorical: 1.0
+
+freeze:
+  backbone: false
+  output_head: false
+
+ckpt_load:
+  load_optimizer: true
+  reset_iter: false
+  strict_model: true
+  ignore_prefixes: []

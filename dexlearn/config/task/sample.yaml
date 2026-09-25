@@ -1,0 +1,2 @@
+# Sampling uses algo.model.type_availability.score_threshold directly.
+# Override that algo field on the command line when tuning availability sampling.

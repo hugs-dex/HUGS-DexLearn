@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments and OS files
+.env
+.env.*
+!.env.example
+.venv/
+.DS_Store
+Thumbs.db
+
+# Project-local datasets and generated outputs
+/assets/object
+/output/
+/temp/
+/multirun/
+
+# Local package archives
+*.tar.bz2
+
+# Release builds and external assets
+/build/
+/dist/
+/assets/*
+!/assets/.gitkeep
+*.pth
+*.pt
+*.pkl
+*.npz
+*.npy

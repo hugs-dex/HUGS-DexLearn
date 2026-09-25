@@ -1,0 +1,64 @@
+human: true
+dataset_type: HumanMultiDexDataset
+
+runtime:
+  num_workers: 10
+
+paths:
+  # Public input bundles are read-only; set an external cache path explicitly if needed.
+  pose_group_cache_path: ""
+  grasp_path: ${data_root}/OurHumanGraspFormat/grasp
+  object_path: ${data_root}/OurHumanGraspFormat/object
+  split_path: valid_split
+  pc_path: vision_data/complete_pc
+
+point_cloud:
+  num_points: 1024
+  # If true, one grasp can condition on any point cloud from the same canonical object.
+  # If false, the point cloud must match the grasp sequence id.
+  random_pc_across_sequences: false
+
+augmentation:
+  pc_centering: true
+  z_rotation: true
+  xy_rotation:
+    enabled: true
+    max_angle_deg: 3.0
+  translation:
+    enabled: false
+    range: 0.02
+  # Uniformly scales the centered object point cloud and active hand translations.
+  scale:
+    enabled: true
+    min: 0.8
+    max: 1.2
+  pc_noise:
+    enabled: true
+    scale: 0.001
+
+type_balancing:
+  # Analyze the real train split and use it for mild grasp-type balancing.
+  enabled: true
+  sampler:
+    enabled: true
+    # q(type) is proportional to count(type)^alpha. 1.0 keeps the data distribution; 0.0 is type-uniform.
+    alpha: 0.5
+    object_uniform: true
+  loss_weight:
+    enabled: true
+    # Keep this weak when sampler balancing is enabled to avoid double-counting rare types.
+    beta: 0.25
+    reference: sampler # sampler or data
+
+human_hand:
+  position_source: index_mcp # wrist or index_mcp
+  load_mano_params: false
+
+# Compatibility aliases for command-line overrides and older call sites.
+hand_pos_source: ${.human_hand.position_source}
+load_mano_params: ${.human_hand.load_mano_params}
+
+test:
+  split: test
+  scene_cfg: ["**/*.npy", "*.npy"]
+  mini: false

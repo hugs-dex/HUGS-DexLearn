@@ -1,0 +1,28 @@
+name: ${test_data_name}
+human: True
+dataset_type: HumanMultiDexDataset
+
+num_points: 1024
+# Sample every explicit human grasp type when exporting fixed-type pose samples.
+# ``0_any`` is intentionally excluded because it asks the model to predict the type.
+grasp_type_lst: ["1_right_two", "2_right_three", "3_right_full", "4_both_three", "5_both_full"]
+pc_centering: True
+# Runtime-only scale for test/inference point clouds. obj_human_prior_export
+# sets this to 1 / task.robot_size for robot-specific human prior inference.
+pc_runtime_scale: 1.0
+
+object_path: ${data_root}/OurHumanGraspFormat/object
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/complete_pc    # relative to object_path
+
+test_split: all # test
+test_scene_cfg: "**/*.npy"
+mini_test: False
+
+# Optional deterministic random subset for quick sample/evaluation runs.
+# Example: test_data.test_object_num=50 test_data.test_subset_seed=7
+# ``test_scene_num`` is applied after scene cfg files are collected from the
+# selected objects. Leave values <= 0 to keep the full test split.
+test_object_num: 0
+test_scene_num: 0
+test_subset_seed: 0

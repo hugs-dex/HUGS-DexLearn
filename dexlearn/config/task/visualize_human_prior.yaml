@@ -1,0 +1,46 @@
+name: visualize_human_prior
+
+# Full robot-specific directory produced by task=obj_human_prior_export.
+# The direct children of this path must be object directories, matching:
+# obj_human_prior/<step>/<asset>/<robot_name>/<object>/...
+prior_dir: ${output_folder}/prior/DGN_2k/shadow_hand
+
+# Viser selection mode. The web UI can switch between these modes at runtime.
+visualize_mode: random_objects  # random_objects, one_scene
+object_id:
+scene_id:
+random_object_count: 25
+scene_option_count: 256
+# Number of wrist pose samples shown per grasp type on each one_scene page.
+# The Selection panel's Next Batch button advances this sample window; Next
+# Scene selects another random scene while keeping the current grasp type.
+one_scene_samples_per_type: 5
+# Initial Grasp Type dropdown value. 0_any is score-only for random_objects and
+# all real grasp types for one_scene; ids 1..5 render wrist poses for that type.
+target_grasp_type_id: 0
+# Hide type 4_both_three from the human-prior UI and score captions.
+exclude_both_three: false
+
+visualizer: viser
+viser_port: 8080
+viser_scene_spacing: 0.5
+viser_display_mode: all
+viser_scene_id: 0
+# Viser scene-label font controls.
+viser_label_font_size_mode: screen
+viser_label_font_screen_scale: 0.8
+viser_label_height_offset: 0.35
+show_one_scene_caption: false
+# MANO local frame visibility controls.
+show_mano_wrist_frame: true
+show_index_mcp_frame: true
+# Scene origin axes controls.
+scene_origin_axis_origin_size: 0.01
+scene_origin_axis_radius: 0.001
+scene_origin_axis_length: 0.3
+# Point-cloud color preset or explicit RGB/RGBA array.
+# Current options: red, gray
+point_cloud_color: red
+
+# Point-cloud subsampling for each rendered scene.
+num_points: 1024

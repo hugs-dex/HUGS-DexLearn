@@ -1,0 +1,117 @@
+name: scene_budget
+
+# all: build scene-budget labels and train the independent budget head.
+# build_labels: only export geometry features and scene-budget labels.
+# train_head: train from an existing scene-budget CSV and summary JSON.
+# predict: run a trained budget head on sample-style test_data.
+mode: all
+output_dir:
+scene_csv:
+summary_json:
+
+# hierarchy_count: default direct supervision from scene_budget_label_hierarchy.csv.
+# legacy_nearest_n: old nearest-scene diverse-grasp-class proxy for ablation.
+label_source: hierarchy_count
+
+# Human-only splits. No DGN information is used by this task.
+splits:
+  - train
+  - test
+
+feature:
+  # Feature extraction uses only three yaw-invariant bounding-box dimensions:
+  # XY major length, XY minor length, and vertical Z height. The canonical
+  # point cloud is first transformed by the object's scene pose, then the XY
+  # box may rotate around Z. This limit keeps large point clouds cheap while
+  # using deterministic subsampling.
+  max_points: 8192
+
+hierarchy_count:
+  # Pose-class scenes can contain multiple original sequence scenes. The budget head
+  # still consumes one posed bbox feature per pose class, so member scene
+  # features are reduced before in-memory training and prediction export.
+  feature_reducer: mean
+  # Count multipliers are normalized by the mean grasp_record_count in this
+  # data split. If the requested split is absent, all pose-class scenes are used.
+  normalization_split: train
+
+legacy_nearest_n:
+  # Legacy label source only. Each scene's local class contains the nearest N human scenes in
+  # standardized yaw-invariant geometry feature space. The label is the number
+  # of diverse grasp classes found after the neighbor scenes are Z-yaw-aligned
+  # to the query scene. The invariant feature selects neighbors but does not
+  # carry the yaw angle; the alignment yaw is read from object poses.
+  nearest_scene_num: 16
+  # Same-type grasps are grouped together only when both wrist orientation and
+  # wrist direction relative to the object center are within these thresholds
+  # after query-centered, object-pose-coupled global Z-yaw alignment.
+  orientation_threshold_deg: 30.0
+  direction_threshold_deg: 30.0
+  # Reference metric: after finding nearest N scenes, scenes from the same
+  # canonical object are merged into one posed object only when their object
+  # poses match after optimal global Z-yaw alignment.
+  posed_object_translation_threshold_m: 0.1
+  posed_object_rotation_threshold_deg: 45.0
+  clip_min: 0.2
+  clip_max: 5.0
+
+label_structure:
+  # Dataset hierarchy CSV first groups poses modulo pure global Z-yaw and a
+  # 180-degree symmetry around the object's canonical local Z axis.
+  pose_class_rotation_threshold_deg: 45.0
+  # If the rotation rule fails, a fallback still merges scenes whose posed bbox
+  # proportions are close. The bbox proportions use the same yaw-free
+  # [xy_major, xy_minor, z] dimensions as the scene budget feature.
+  pose_class_bbox_proportion_threshold: 0.2
+
+train:
+  enabled: true
+  device: ${device}
+  # bbox: use the original three yaw-invariant bbox dimensions.
+  # pointcloud: use the same point-cloud backbone family as task=train.
+  input_type: bbox
+  # The object assets already provide train.json and test.json; scene_budget
+  # does not create a random validation split internally.
+  train_split: train
+  val_split: test
+  max_epochs: 100
+  batch_size: 32
+  lr: 0.001
+  weight_decay: 0.001
+  hidden_dims:
+    - 16
+    - 16
+  dropout: 0.1
+  loss: huber
+  huber_beta: 0.25
+  log_every: 10
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_delta: 0.0001
+    min_epochs: 10
+  pointcloud:
+    backbone:
+      name: WrappedMinkUNet
+      out_feat_dim: 1024
+      voxel_size: 0.005
+    # Optional task=train checkpoint. When set, only backbone.* weights are
+    # loaded into the point-cloud encoder before training the budget head.
+    encoder_checkpoint:
+    freeze_encoder: false
+    num_points: 1024
+    voxel_size: 0.005
+    # Budget labels are invariant to global Z yaw, so point-cloud budget
+    # training can augment only around the vertical axis.
+    z_yaw_aug: true
+    hidden_dims:
+      - 128
+      - 64
+
+# Prediction reuses create_test_dataloader(config), so test_data can be humanMulti
+# or DGNMulti and follows the same input distribution as task=sample.
+inference:
+  checkpoint:
+  output_csv:
+  device: ${device}
+  deduplicate_scenes: true

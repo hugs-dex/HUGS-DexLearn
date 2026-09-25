@@ -1,0 +1,43 @@
+name: ${test_data_name}
+dataset_type: RobotMultiDexDataset
+human: False
+
+num_points: 1024
+traj_length: 3
+joint_num: 44 # bimanual shadow hands
+
+preload_point_clouds: True
+grasp_type_lst: ["0_any"]
+pc_centering: True
+
+grasp_path: ${data_root}/human_DGN2k_full/shadow
+object_path: ${data_root}/object/DGN_2k
+split_path: valid_split   # relative to object_path
+pc_source: partial
+pc_path: vision_data/three_realsense_d435_random4096
+
+test_split: test
+test_scene_cfg: tabletop_ur10e/**.npy
+mini_test: False
+
+# Optional deterministic random subset for quick sample/evaluation runs.
+# Values <= 0 keep the full test split.
+test_object_num: 0
+test_scene_num: 0
+test_subset_seed: 0
+
+# only for visualization
+robot_urdf_path: ${asset_root}/robot/shadow_hand/dual_dummy_arm_shadow.urdf
+robot_mesh_dir_path: ${asset_root}/robot/shadow_hand
+metadata_group: both_full
+robot_fingertip_link_names:
+  - rh_ffdistal
+  - rh_mfdistal
+  - rh_rfdistal
+  - rh_lfdistal
+  - rh_thdistal
+  - lh_ffdistal
+  - lh_mfdistal
+  - lh_rfdistal
+  - lh_lfdistal
+  - lh_thdistal

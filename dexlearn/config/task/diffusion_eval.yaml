@@ -1,0 +1,55 @@
+# Intrinsic evaluation for human diffusion index-MCP pose samples.
+#
+# This task reads saved `task=sample` human results and compares generated
+# index-MCP positions and wrist rotations against GT human grasps from the
+# requested human split(s).
+# It focuses on:
+# - record-level recall: whether the unique GT index-MCP/wrist-rotation pose is
+#   covered by the generated pose set for the same scene and grasp type
+# - generated index-MCP-to-object-surface distance as a sanity check
+#
+# Default result path:
+# <output_folder>/<wandb.id>/tests/<ckpt_step>/humanMulti
+
+name: diffusion_eval
+
+# Optional explicit saved-sample input. Leave empty to derive it from
+# output_folder / wandb.id / ckpt.
+human_results_dir:
+human_results_dataset: humanMulti
+
+# Empty means write to <tests>/<step>/diffusion_eval/
+output_dir:
+report_md:
+
+# GT human splits used to rebuild reference pose sets.
+human_splits: [test]
+
+# Empty means evaluate all real grasp types 1..5.
+grasp_types:
+
+# Set >0 for quick partial evaluation.
+max_scene_type_groups: 0
+
+# A GT record is counted as recalled if at least one generated sample is inside
+# both thresholds for the same grasp type.
+match_thresholds_by_grasp_type:
+  right_two:
+    translation_m: 0.03
+    rotation_deg: 30.0
+  right_three:
+    translation_m: 0.03
+    rotation_deg: 30.0
+  right_full:
+    translation_m: 0.03
+    rotation_deg: 30.0
+  both_three:
+    translation_m: 0.03
+    rotation_deg: 30.0
+  both_full:
+    translation_m: 0.05
+    rotation_deg: 45.0
+
+# Optional point cap for index-MCP-to-surface distance lookup. Non-positive
+# values keep all object points.
+surface_max_points: 8192

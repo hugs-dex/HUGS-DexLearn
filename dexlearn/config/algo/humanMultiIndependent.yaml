@@ -1,0 +1,142 @@
+human: true
+factorization: independent_C_T
+
+batch_size: 256
+max_iter: 10000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 2500
+val_num: 10
+save_every: 2500
+grad_clip: 10.0
+
+training:
+  mode: independent_marginals_from_scratch
+  # both | mode_marginal | pose_marginal
+  run: both
+  mode_marginal:
+    exp_suffix: mode_marginal
+    max_iter: 300
+    save_every: 50
+    val_every: 50
+    lr: 0.001
+    lr_min: 0.0001
+  pose_marginal:
+    exp_suffix: pose_marginal
+    max_iter: 10000
+    save_every: 2500
+    val_every: 2500
+    lr: 0.001
+    lr_min: 0.0001
+
+test_grasp_num: 100
+test_topk: 20
+
+sample_selection:
+  enabled: true
+  scope: global
+  mode: prob_pose
+  intermediate_topk: 50
+  translation_scale_m: 0.05
+  rotation_weight: 1.0
+
+independent_sampling:
+  pool_size: 500
+  candidate_num: ${algo.test_grasp_num}
+  base_seed: ${seed}
+  # Separate stream bases can be overridden independently for RNG-control tests.
+  mode_seed: ${.base_seed}
+  pose_seed: ${.base_seed}
+  pairing_seed: ${.base_seed}
+  adapter_seed: ${.base_seed}
+  include_raw_pool: true
+  raw_artifact_format: npz
+  adapter_policy: mode_blind_stratified
+  inactive_left_translation: [0.0, 0.0, -0.5]
+  inactive_left_translation_tolerance_m: 0.05
+  inactive_left_rotation_tolerance_deg: 15.0
+
+models:
+  mode_marginal:
+    name: ObjectModeMarginalModel
+    type_objective: ce
+    backbone:
+      name: WrappedMinkUNet
+      out_feat_dim: 1024
+      voxel_size: 0.005
+    type_head:
+      hidden_dim: 64
+  pose_marginal:
+    name: MarginalPoseDiffusionModel
+    backbone:
+      name: WrappedMinkUNet
+      out_feat_dim: 1024
+      voxel_size: 0.005
+    head:
+      name: DiffusionBiRT_v2
+      in_feat_dim:
+      diffusion:
+        ode: 1
+        scheduler_type: DDIMScheduler
+        scheduler:
+          beta_schedule: squaredcos_cap_v2
+          prediction_type: v_prediction
+          num_train_timesteps: 128
+          clip_sample: false
+        num_inference_timesteps: 10
+        log_prob_type: accurate_cont
+        loss_type: l1
+
+# Generic sample tasks default to the pose marginal. Training/export replace
+# this section with the appropriate nested branch config.
+model:
+  name: MarginalPoseDiffusionModel
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  head:
+    name: DiffusionBiRT_v2
+    in_feat_dim:
+    diffusion:
+      ode: 1
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: false
+      num_inference_timesteps: 10
+      log_prob_type: accurate_cont
+      loss_type: l1
+
+supervision:
+  scope: record
+  negative_policy: softmax
+  balancing:
+    enabled: false
+    sampler:
+      enabled: false
+      alpha: 1.0
+      object_uniform: true
+    loss_weight:
+      enabled: false
+      beta: 0.0
+      reference: data
+
+loss_weight:
+  loss_diffusion: 1.0
+  loss_type: 1.0
+
+freeze:
+  backbone: false
+  type_classifier: false
+  grasp_type_emb: false
+  output_head: false
+
+ckpt_load:
+  load_optimizer: true
+  reset_iter: false
+  strict_model: true
+  ignore_prefixes: []

@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "Please cite HUGS-DexLearn and record the code commit and data version used."
+title: "HUGS-DexLearn"
+type: software
+version: 0.1.0
+authors:
+  - name: "HUGS contributors"
+repository-code: "https://github.com/hugs-dex/HUGS-DexLearn"

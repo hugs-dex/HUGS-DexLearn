@@ -1,0 +1,18 @@
+[submodule "third_party/nflows"]
+	path = third_party/nflows
+	url = https://github.com/nkolot/nflows.git
+[submodule "third_party/MinkowskiEngine"]
+	path = third_party/MinkowskiEngine
+	url = https://github.com/NVIDIA/MinkowskiEngine.git
+[submodule "third_party/diffusers"]
+	path = third_party/diffusers
+	url = https://github.com/huggingface/diffusers.git
+[submodule "third_party/manopth"]
+	path = third_party/manopth
+	url = https://github.com/DexGrasp-TH/manopth.git
+[submodule "third_party/utils_python"]
+	path = third_party/utils_python
+	url = https://github.com/Mingrui-Yu/utils_python.git
+[submodule "third_party/pytorch_kinematics"]
+	path = third_party/pytorch_kinematics
+	url = https://github.com/DexGrasp-TH/pytorch_kinematics.git

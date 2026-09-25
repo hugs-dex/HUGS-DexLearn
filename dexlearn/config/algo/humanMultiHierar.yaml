@@ -1,0 +1,162 @@
+human: True
+
+batch_size: 256
+max_iter: 10000
+lr: 0.001
+lr_min: 0.0001
+log_every: 10
+val_every: 2500
+val_num: 10
+save_every: 2500
+grad_clip: 10.0
+
+training:
+  # Explicit high-level training route for Human Prior experiments.
+  #
+  # - legacy_shared_encoder_two_stage:
+  #     Keep the previous default route. Stage 1 and Stage 2 are controlled by
+  #     `algo.two_stage.*`, and Stage 1 may include a weak type loss.
+  # - independent_from_scratch:
+  #     Launch two fresh runs with separate experiment names:
+  #     `<exp>_diffusion` and `<exp>_type`.
+  # - joint_single_stage:
+  #     Train type prediction and wrist diffusion jointly inside one model and
+  #     one stage, without Stage 1 / Stage 2 splitting.
+  # - two_stage_diffusion_then_frozen_type_head:
+  #     Reuse `algo.two_stage.*` scheduling, but force Stage 1 to train
+  #     diffusion only and Stage 2 to reset / train the frozen-encoder type
+  #     predictor.
+  mode: independent_from_scratch
+  independent:
+    # both | type | diffusion
+    # `both` runs `type` first because it is much faster to inspect.
+    run: both
+    diffusion_exp_suffix: diffusion
+    type_exp_suffix: type
+    type:
+      max_iter: 300
+      save_every: 50
+      val_every: 50
+      lr: 0.001
+      lr_min: 0.0001
+    diffusion:
+      max_iter: 10000
+      save_every: 2500
+      val_every: 2500
+      lr: 0.001
+      lr_min: 0.0001
+
+two_stage:
+  # When enabled, task=train runs Stage 1 and Stage 2 sequentially inside one
+  # python process. `algo.training.mode=two_stage_diffusion_then_frozen_type_head`
+  # also reuses this schedule, but forces `stage1.loss_type=0`.
+  enabled: true
+  stage1:
+    exp_suffix: stage1
+    ckpt_step: 10000
+    # Keep diffusion as the primary Stage 1 objective, while giving the shared
+    # encoder a weak Human Prior type-prior signal.
+    loss_diffusion: 1.0
+    loss_type: 0.005
+  stage2:
+    # Stage suffixes distinguish wandb/model-registry entries. Local
+    # checkpoints from both stages are saved under the user provided exp_name.
+    exp_suffix: stage2
+    # These values are consumed by task=train when it launches the frozen
+    # encoder type-predictor finetuning stage.
+    max_iter: 300
+    save_every: 50
+    val_every: 50
+    lr: 0.001
+    lr_min: 0.0001
+
+# Generate a larger candidate pool first, then keep `test_topk` candidates
+# according to `sample_selection.mode`.
+test_grasp_num: 100
+test_topk: 20
+
+sample_selection:
+  # prob: preserve the legacy behavior and keep the highest-log-prob samples.
+  # random: keep a random subset from the generated candidate pool.
+  # pose_diversity: seed with the highest-log-prob sample, then greedily add
+  #   candidates that maximize pose-space distance to the selected set.
+  # pose_prob: first keep `intermediate_topk` candidates with pose_diversity,
+  #   then keep final `test_topk` candidates by log-probability.
+  # prob_pose: first keep `intermediate_topk` candidates by log-probability,
+  #   then keep final `test_topk` candidates with pose_diversity.
+  mode: prob_pose
+  intermediate_topk: 50
+  translation_scale_m: 0.05
+  rotation_weight: 1.0
+
+ckpt_load:
+  # When true, resume optimizer state from ckpt. Disable for finetuning runs
+  # that change trainable parameters, reset iteration count, or replace heads.
+  load_optimizer: true
+  # When true, use ckpt weights as initialization and train from iteration 0.
+  reset_iter: false
+  # Non-strict loading allows intentional head replacement during finetuning.
+  strict_model: true
+  ignore_prefixes: []
+
+freeze:
+  backbone: false
+  type_classifier: false
+  grasp_type_emb: false
+  output_head: false
+
+model:
+  name: HierarchicalTypeObjectiveModel
+  # Type prediction is trained with 5-real-type softmax CE only.
+  type_objective: ce
+  # When true, train only the point-cloud backbone and grasp-type predictor.
+  # Diffusion pose generation loss is skipped, which is useful for fast
+  # Human Prior type-prior ablations.
+  train_type_only: false
+  backbone:
+    name: WrappedMinkUNet
+    out_feat_dim: 1024
+    voxel_size: 0.005
+  type_head:
+    hidden_dim: 64
+  grasp_type_emb:
+    name: LearnableTypeCond
+    in_feat_dim: ${..backbone.out_feat_dim}
+    out_feat_dim: 128
+    use_predictor: false
+    disabled: false
+  head:
+    name: DiffusionBiRT_v2
+    in_feat_dim:
+    diffusion:
+      ode: 1
+      scheduler_type: DDIMScheduler
+      scheduler:
+        beta_schedule: squaredcos_cap_v2
+        prediction_type: v_prediction
+        num_train_timesteps: 128
+        clip_sample: False
+      num_inference_timesteps: 10
+      log_prob_type: accurate_cont
+      loss_type: l1
+
+supervision:
+  # auto resolves CE supervision to record-level 5-real-type softmax labels.
+  scope: auto
+  negative_policy: auto
+  balancing:
+    enabled: false
+    sampler:
+      enabled: false
+      # q(type) is proportional to count(type)^alpha. 1.0 keeps the data distribution; 0.0 is type-uniform.
+      alpha: 0.5
+      object_uniform: true
+    loss_weight:
+      enabled: false
+      # Keep this weak when sampler balancing is enabled to avoid double-counting rare types.
+      beta: 0.25
+      reference: sampler # sampler or data
+
+loss_weight:
+  loss_diffusion: 1.0
+  loss_type: 1.0

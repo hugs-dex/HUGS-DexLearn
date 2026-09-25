@@ -1,0 +1,19 @@
+human: True
+dataset_type: HumanDexDataset
+num_workers: 10
+
+num_points: 1024
+traj_length: 3
+joint_num: 16
+grasp_type_lst: [""]
+grasp_type_cond: False
+pc_centering: True
+
+grasp_path: ${data_root}/HOGraspNet/grasp
+object_path: ${data_root}/HOGraspNet/object
+split_path: valid_split   # relative to object_path
+pc_path: vision_data/complete_pc    # relative to object_path
+
+test_split: test
+test_scene_cfg: "**/*.npy"
+mini_test: False
