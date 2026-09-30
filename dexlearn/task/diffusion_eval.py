@@ -529,8 +529,9 @@ def load_scene_object_points(
     Returns:
         Float32 point cloud shaped ``(N, 3)`` in world coordinates.
     """
-    scene_path = _abs_path(scene_path)
-    pc_path = _abs_path(pc_path)
+    from dexlearn.utils.resources import resolve_dataset_path
+    scene_path = resolve_dataset_path(scene_path)
+    pc_path = resolve_dataset_path(pc_path)
     cache_key = (scene_path, pc_path, int(max_points))
     if cache_key in cache:
         return cache[cache_key]

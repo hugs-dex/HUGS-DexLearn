@@ -47,9 +47,10 @@ training:
       lr_min: 0.0001
 
 two_stage:
-  # When enabled, task=train runs Stage 1 and Stage 2 sequentially inside one
-  # python process. `algo.training.mode=two_stage_diffusion_then_frozen_type_head`
-  # also reuses this schedule, but forces `stage1.loss_type=0`.
+  # This block is ignored by the default `independent_from_scratch` mode.
+  # It is used only by `legacy_shared_encoder_two_stage` or the explicit
+  # `two_stage_diffusion_then_frozen_type_head` mode. Those modes run Stage 1
+  # and Stage 2 sequentially; the latter forces `stage1.loss_type=0`.
   enabled: true
   stage1:
     exp_suffix: stage1

@@ -60,10 +60,9 @@ def test_robot_workflows_resolve(hand, task):
 
 
 def test_environment_precedence_and_asset_paths(monkeypatch):
-    monkeypatch.setenv("AnyScaleGraspDataset", "/legacy/data")
-    monkeypatch.delenv("ANYSCALEGRASP_DATA_ROOT", raising=False)
-    assert resolve([])["data"]["paths"]["grasp_path"].startswith("/legacy/data/")
-    monkeypatch.setenv("ANYSCALEGRASP_DATA_ROOT", "/public/bundle")
+    monkeypatch.delenv("HUGS_DATASET_ROOT", raising=False)
+    assert resolve([])["data"]["paths"]["grasp_path"].startswith("assets/")
+    monkeypatch.setenv("HUGS_DATASET_ROOT", "/public/bundle")
     monkeypatch.setenv("HUGS_ASSET_ROOT", "/public/assets")
     cfg = resolve(["data=shadowMulti", "test_data=shadowMulti"])
     assert cfg["data"]["paths"]["grasp_path"].startswith("/public/bundle/")

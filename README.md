@@ -1,78 +1,207 @@
 # HUGS-DexLearn
 
-Human Prior 与机器人抓取模型的研究代码。Python 包名保持 `dexlearn`。
-本版本采用 **research-only** 发布说明，首发交付 **source + contract**：源码、配置、接口文档和可运行的接口测试。
-训练、采样、导出、评估和可视化代码均保留；这不表示完整训练或端到端 Human Prior 已复现。
+Learning human grasp priors and robot grasp models for HUGS. This repository provides training, sampling, evaluation, and visualization, with human prior export for HUGS-BODex.
 
-## 保留的功能
+For the overall project code structure and links to all components, see [HUGS-Main](https://github.com/hugs-dex/HUGS-Main).
 
-| 功能 | 源码与配置 | 首发验证边界 |
-| --- | --- | --- |
-| Shadow、Leap-SP；兼容 Leap | 保留机器人训练、采样、类型评估、可视化 | 配置、入口、数据字段和输出接口；真实训练待验证 |
-| Human Prior | 保留 Proposed、Independent、Joint、Reverse、Legacy | 配置、CPU 模型单元测试、五类导出接口；真实权重推理待验证 |
-| scene budget | 保留几何标签、budget head、旧标签 baseline | 入口与配置；真实标签生成和训练待验证 |
-| 旧 research baseline | 保留全部原有 algo YAML 和网络实现 | 合法配置配对检查；实验效果待验证 |
-| 单/多 GPU 编排 | 保留两阶段训练与多 worker 采样 | dry-run、唯一分配、子进程失败传播；真实多 GPU 运行待验证 |
-| 结果与 prior 可视化 | 保留 trimesh/Viser 入口 | 参数与模块导入；交互显示及 MANO 资源待验证 |
+- **Human grasp priors:** hierarchical modeling with Independent, Joint, Reverse, and Legacy baselines.
+- **Robot grasp learning:** Shadow and Leap-SP hands, with Leap compatibility.
+- **Research workflows:** scene-budget prediction and multi-GPU training and sampling.
 
-## 快速检查
+## Installation
+
+Use **Linux x86_64, Python 3.10, and [uv](https://docs.astral.sh/uv/getting-started/installation/)**. GPU training also requires an NVIDIA driver, CUDA toolkit, C++ compiler, Python development headers, and OpenBLAS. On Ubuntu, the development packages are `build-essential`, `python3.10-dev`, and `libopenblas-dev`.
+
+Check `nvidia-smi` and `nvcc --version` before installing. Set `CUDA_HOME` if your toolkit is not detected automatically. The tested setup uses PyTorch 2.2.2 (CUDA 12.1), GCC 11.4, CUDA toolkit 12.4, and an RTX 4090.
+
+Run these commands from the repository root:
 
 ```bash
-python3.10 -m venv .venv
+git submodule update --init
+uv venv --python 3.10 --seed .venv
 source .venv/bin/activate
-python -m pip install -e '.[contract]'
-python -m pytest tests/public -q
-python -m dexlearn.main task=sample --cfg job --resolve
+
+# Prepare PyTorch and the tools needed to build extensions.
+uv pip install --python .venv/bin/python -e '.[build]'
+
+# Install models, CUDA extensions, visualization, and tests.
+uv pip install --python .venv/bin/python -e '.[runtime,cuda,visualize,contract]'
 ```
 
-这些检查不需要 GPU、checkpoint、MANO 或数据集。完整 CPU contract 套件需要
-[安装说明](docs/installation.md) 中的 runtime 依赖。
-不使用开发机的 editable 安装，也不把相邻私有研究仓库加入 `PYTHONPATH`。
+Dependencies, source revisions, editable installs, and build options are managed in `pyproject.toml`. PyTorch3D 0.7.8 is built from a pinned official source revision; no conda archive or manual unpacking is needed. The first installation compiles PyTorch3D and MinkowskiEngine and may take several minutes. Keep `.venv` activated because MinkowskiEngine's build script invokes `pip` internally.
 
-## 数据和资产
+Omit `visualize` if you do not need visualization or MANO support. For CPU model tests, omit `cuda`; PyTorch3D still requires a C++ compiler. For configuration checks only, install `'.[contract]'` and run `python -m pytest tests/public -q`; the build step and submodules are unnecessary.
+
+### Verify
 
 ```bash
-# 指向包含 object/、OurHumanGraspFormat/ 的实际 bundle，不是 archives/ 的外层目录。
-export ANYSCALEGRASP_DATA_ROOT=/path/to/data-bundle
+uv pip check --python .venv/bin/python
+python -m dexlearn.main task=sample --cfg job --resolve
+CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 python -m pytest tests -q
+OMP_NUM_THREADS=2 python scripts/check_environment.py --cuda --visualize
+```
+
+These checks require no dataset, checkpoint, or MANO model. They cover CPU model tests, CUDA extension operations, the HUGS point-cloud backbone, and visualization imports. Omit the corresponding check flags if you skipped optional dependencies. Obtain MANO models separately as described below.
+
+## Data and Assets
+
+Download and prepare the required data and assets separately, then set their paths:
+
+```bash
+export HUGS_DATASET_ROOT=/path/to/hugs-dataset
 export HUGS_ASSET_ROOT=/path/to/robot-assets
 export MANO_ROOT=/path/to/licensed-mano-models
-export HUGS_OUTPUT_ROOT=/path/to/new-run-output
 ```
 
-`AnyScaleGraspDataset` 是兼容别名；两者同时设置时以 `ANYSCALEGRASP_DATA_ROOT` 为准。
-默认资源路径为本仓库 `assets/`，没有隐式研发数据 fallback。
-机器人资产根下应有 `robot/shadow_hand/` 和 `robot/leap_hand/`。
-MANO 根目录下应有 `MANO_RIGHT.pkl`、`MANO_LEFT.pkl`。
-数据、checkpoint、MANO、mesh 归档均不随源码分发，也不自动下载。
-本仓库不向 Hugging Face 上传任何内容。
+The data root should contain `object/` and `OurHumanGraspFormat/`. Robot assets use `robot/shadow_hand/` and `robot/leap_hand/`. Tasks that use MANO require `MANO_RIGHT.pkl` and `MANO_LEFT.pkl` under `MANO_ROOT`.
 
-## 工作流入口
+Datasets, checkpoints, MANO models, and mesh archives are not bundled with the code. See [data and checkpoint formats](docs/contracts.md) for the required layout.
 
-以下是依赖和输入齐全后的运行命令，非首发端到端验证声明。checkpoint 必须显式替换为已有模型文件。
+## Usage
+
+The examples below assume that dependencies and input assets are available. Replace checkpoint paths with your trained models.
+
+The two sections below are separate pipeline stages. Run the Human Prior stage when
+you need human-derived initialization for downstream synthesis, and run the Robot
+Grasp stage when you need a learned robot grasp model.
+
+### Human Prior
+
+Preview augmented training samples in Viser (requires MANO models):
 
 ```bash
-# Human Prior 训练；机器人训练改为 algo=robotMultiHierar data=shadowMulti 或 leapspMulti。
-python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti exp_name=prior
-# 采样
-python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti ckpt=/path/to/model.pth
-# BODex 所需 index-MCP prior 导出；独立训练分支分别提供 score/pose checkpoint。
-python -m dexlearn.main task=obj_human_prior_export data=humanMulti algo=humanMultiHierar test_data=DGNMulti task.score_ckpt=/path/to/type.pth task.pose_ckpt=/path/to/pose.pth task.output_dir=/path/to/new-prior
-# 读取已保存的评分结果，不在 evaluate 中重新采样。
-python -m dexlearn.main task=evaluate data=humanMulti algo=humanMultiHierar task.human_results_dir=/path/to/human-scores task.dgn_results_dir=/path/to/object-scores
-# 查看已采样结果，或使用 task=visualize_human_prior task.prior_dir=/path/to/robot-prior。
-python -m dexlearn.main task=visualize data=shadowMulti test_data=shadowMulti algo=robotMultiHierar ckpt=/path/to/model.pth
-# scene budget 保留全部 mode；all 包含标签生成和训练。
-python -m dexlearn.main task=scene_budget data=humanMulti algo=humanMultiHierar task.mode=all
+python -m dexlearn.scripts.check_human_dataloader data=humanMulti
 ```
 
-`human_preprocess` 会写入 grasp 文件，`human_prior_format` 会写出格式化结果；在明确的工作副本上运行。
-普通读取默认禁用人手 pose-group cache 写回，输出和日志使用独立目录。
-评估的 scale-anchor baseline 需要 `metadata/Ours_object_scale_type_distribution.json`，缺失时显式提供
-`task.human_scale_anchor_distribution_json`，不能把缺失 baseline 当作已评测。
+Open `http://localhost:8080`. Use **Next Batch** to browse and **Display → View → single**
+to inspect one sample. Optional overrides: `+check_batch_size=8` and `+viser_port=8081`.
 
-- [安装与依赖](docs/installation.md)
-- [数据、prior 与 checkpoint contract](docs/contracts.md)
-- [完整保留工作流和 baseline 配对](docs/workflows.md)
-- [首发验证与已知限制](docs/validation.md)
-- [发布与维护](docs/releasing.md)
-- [Research-only 说明](RESEARCH_ONLY.md)
+#### Full-Data Prior Export
+
+Train both Human Prior branches on all human objects, then export priors for
+downstream HUGS-BODex synthesis. The default independent training mode saves
+the pose and score checkpoints under `<exp_name>_diffusion` and
+`<exp_name>_type` (10,000 and 300 iterations, respectively).
+
+```bash
+python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti \
+  data.sampling.train_split=all exp_name=<exp_name>
+
+python -m dexlearn.main task=obj_human_prior_export \
+  algo=humanMultiHierar data=humanMulti test_data=DGNMulti \
+  task.score_exp_name=<exp_name>_type task.score_ckpt=000300 \
+  task.pose_exp_name=<exp_name>_diffusion task.pose_ckpt=010000 \
+  exp_name=<exp_name>
+```
+
+#### Train and Evaluate
+
+Use a different `<exp_name>` from the full-data run: training resumes existing
+checkpoints by default. Train on the default `train` split, then sample `0_any`
+scores and poses for all five grasp types on `all` human objects.
+`evaluate` reports Human train/test score metrics and DGN score diagnostics
+(DGN has no human labels). `diffusion_eval` measures pose recall and surface
+distance on the Human `test` split. Both tasks read saved samples.
+
+```bash
+# Train separate pose and score branches on train.json.
+python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti exp_name=<exp_name>
+
+# Sample contact mode probability (scores) for all Human objects.
+python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  algo.model.train_type_only=true 'test_data.grasp_type_lst=["0_any"]' \
+  test_data.test_split=all exp_name=<exp_name>_type ckpt=000300
+
+# Sample wrist poses for all contact modes and all Human objects.
+python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  test_data.test_split=all exp_name=<exp_name>_diffusion ckpt=010000
+```
+
+View the saved samples in Viser (requires MANO models). Run each command
+separately and open `http://localhost:8080`. The pose view shows generated
+hands; the score view shows point clouds and the trained five-type scores.
+Use the Selection panel to switch between all, train, and test objects.
+
+```bash
+# View contact-mode scores.
+python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=<exp_name>_type ckpt=000300 \
+  task.visualize_mode=random_objects task.target_grasp_type_id=0
+
+# View sampled wrist poses, grouped by object and grasp type.
+python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=<exp_name>_diffusion ckpt=010000 task.visualize_mode=one_object
+```
+
+The independent branches have separate sample directories. The pose view does
+not display type scores; the score view shows object means from `0_any` samples.
+
+```bash
+# Evaluate scores. Prepare the scale-anchor JSON below first to include its baseline.
+python -m dexlearn.main task=evaluate algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=<exp_name>_type ckpt=000300
+
+# Evaluate generated Human poses against test.json.
+python -m dexlearn.main task=diffusion_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=<exp_name>_diffusion ckpt=010000
+```
+
+Samples are saved under `output/humanMulti_humanMultiHierar_<branch>/tests/step_<ckpt>/`,
+where `<branch>` is `<exp_name>_type` or `<exp_name>_diffusion`, with dataset and
+grasp-type subdirectories. Reports are saved in `evaluation/` under the type
+step directory and `diffusion_eval/` under the diffusion step directory.
+For Human-only score evaluation, omit DGN sampling and set `task.run_dgn_1b=false`.
+
+The human scale-anchor baseline uses object-scale and grasp-type statistics
+from `task=stat` in the separate HumanGraspData preprocessing repository.
+Before running `evaluate`, generate the JSON from the same formatted human
+data and `object/valid_split/train.json`. The JSON contains both `all` and
+`train` scopes; the baseline uses `train` statistics to predict distributions
+from the nearest object-scale anchor on `test` objects. After setting up
+HumanGraspData, write the JSON to the location expected by `evaluate`:
+
+```bash
+# Run from the HumanGraspData repository root.
+python src/main.py task=stat exp_name=scale_anchor task.data_name=Ours \
+  task.data_path="${HUGS_DATASET_ROOT}/OurHumanGraspFormat" \
+  task.object_scale_type_distribution_path="${HUGS_DATASET_ROOT}/metadata/Ours_object_scale_type_distribution.json"
+```
+
+`evaluate` writes `evaluation_human_scale_anchor_baseline_{predictions,metrics,summary}.csv`
+in the type branch's `evaluation/` directory. For an existing JSON elsewhere,
+set `task.human_scale_anchor_distribution_json=/path/to/statistics.json`.
+If the JSON is absent, this baseline is skipped; to omit it intentionally, set
+`task.run_human_scale_anchor_baseline=false`.
+
+### Robot Grasp
+
+Train a robot grasp model. Use `data=leapspMulti` for Leap-SP.
+
+```bash
+python -m dexlearn.main task=train algo=robotMultiHierar data=shadowMulti exp_name=shadow
+```
+
+Sample and visualize robot grasps:
+
+```bash
+python -m dexlearn.main task=sample algo=robotMultiHierar \
+  data=shadowMulti test_data=shadowMulti exp_name=shadow ckpt=/path/to/model.pth
+
+python -m dexlearn.main task=visualize algo=robotMultiHierar \
+  data=shadowMulti test_data=shadowMulti exp_name=shadow ckpt=/path/to/model.pth
+```
+
+See the [workflow guide](docs/workflows.md) for score sampling, pose evaluation,
+baseline configurations, scene-budget prediction, and multi-GPU execution.
+
+## Documentation
+
+- [Data, prior, and checkpoint formats](docs/contracts.md)
+- [Workflows and baselines](docs/workflows.md)
+- [Validation and known limitations](docs/validation.md)
+
+This release includes source code, configurations, and interface tests. Configuration and CPU model/export tests have been validated; full training and end-to-end GPU workflows have not yet been verified for this release.
+
+## License
+
+This code is provided for research use only; see [RESEARCH_ONLY.md](RESEARCH_ONLY.md). Third-party code and assets retain their original terms.

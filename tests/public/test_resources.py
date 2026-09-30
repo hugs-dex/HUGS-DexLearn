@@ -10,7 +10,7 @@ from dexlearn.utils.resources import validate_resources
 
 def test_missing_dataset_identifies_configuration(tmp_path):
     cfg = OmegaConf.create({"task_name": "train", "data": {"paths": {"grasp_path": str(tmp_path / "missing")}}})
-    with pytest.raises(FileNotFoundError, match="ANYSCALEGRASP_DATA_ROOT"):
+    with pytest.raises(FileNotFoundError, match="HUGS_DATASET_ROOT"):
         validate_resources(cfg)
     assert list(tmp_path.iterdir()) == []
 

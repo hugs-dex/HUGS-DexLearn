@@ -1,22 +1,22 @@
+"""Preview augmented human training batches in Viser without a checkpoint."""
+
 import os
 import sys
 from pathlib import Path
 
 import hydra
-import numpy as np
 import torch
 import trimesh
 from omegaconf import DictConfig, OmegaConf
 from pytorch3d.transforms import matrix_to_axis_angle
 from torch.utils.data import DataLoader
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from dexlearn.dataset import InfLoader, create_dataset, minkowski_collate_fn
 from dexlearn.dataset.grasp_types import GRASP_TYPES
-from dexlearn.network.models import *  # noqa: F401,F403
 from dexlearn.task.visualize import show_scenes_with_viser
 from dexlearn.utils.config import flatten_multidex_data_config
 from dexlearn.utils.human_hand import (
@@ -25,7 +25,6 @@ from dexlearn.utils.human_hand import (
     infer_dataset_name_from_grasp_path,
     normalize_hand_pos_source,
 )
-from dexlearn.utils.logger import Logger
 from dexlearn.utils.util import set_seed
 from manopth.manolayer import ManoLayer
 
@@ -85,6 +84,7 @@ def target_fingertip_indices(grasp_type_id, side):
     return [FINGERTIP_JOINT_INDICES[name] for name in finger_names]
 
 
+@torch.no_grad()
 def build_human_batch_scene_records(data, mano_layers, mano_cfg, hand_pos_source, hand_colors, device):
     """Build viser scene records from one human dataloader batch.
 
@@ -105,7 +105,12 @@ def build_human_batch_scene_records(data, mano_layers, mano_cfg, hand_pos_source
     for i in range(batch_size):
         grasp_type_id = int(data["grasp_type_id"][i])
         grasp_type_name = GRASP_TYPES[grasp_type_id]
-        caption = f"{i} | path: {data['path'][i]} | grasp_type: {grasp_type_name}"
+        sample_path = Path(data["path"][i])
+        sample_label = f"{sample_path.parent.name}/{sample_path.name} ({grasp_type_name})"
+        caption = (
+            f"{sample_label} | path: {sample_path} | Given: {grasp_type_name} | "
+            f"Pos: {hand_pos_source} | PC: augmented training input"
+        )
         scene_elements = []
 
         for side in ["right", "left"]:
@@ -166,16 +171,31 @@ def build_human_batch_scene_records(data, mano_layers, mano_cfg, hand_pos_source
         pc_np = data["point_clouds"][i, ...].cpu().numpy()
         scene_elements.append(trimesh.points.PointCloud(pc_np, colors=[255, 165, 0, 255]))
         scene_elements.append(trimesh.creation.axis(origin_size=0.01, axis_radius=0.001, axis_length=0.3))
-        scene_records.append({"elements": scene_elements, "caption": caption})
+        scene_records.append({
+            "elements": scene_elements,
+            "caption": caption,
+            "viser_all_label": sample_label,
+            "label_caption": f"{i}: {grasp_type_name}",
+        })
 
     return scene_records
 
 
-@hydra.main(config_path="../dexlearn/config", config_name="base", version_base=None)
+@hydra.main(config_path="../config", config_name="base", version_base=None)
 def main(config: DictConfig) -> None:
     set_seed(config.seed)
-    Logger(config)
     flatten_multidex_data_config(config.data)
+
+    batch_size = int(cfg_select(config, "check_batch_size", 4))
+    if batch_size < 1:
+        raise ValueError("check_batch_size must be at least 1.")
+    mano_root = Path(config.mano_root).expanduser()
+    for side in ("RIGHT", "LEFT"):
+        model_path = mano_root / f"MANO_{side}.pkl"
+        if not model_path.is_file():
+            raise FileNotFoundError(
+                f"MANO model not found: {model_path}. Set MANO_ROOT or mano_root to the model directory."
+            )
 
     grasp_path = os.path.normpath(str(config.data.grasp_path))
     dataset_name = infer_dataset_name_from_grasp_path(grasp_path)
@@ -185,7 +205,7 @@ def main(config: DictConfig) -> None:
     mano_layers = {
         side: ManoLayer(
             center_idx=0,
-            mano_root=os.environ.get("MANO_ROOT", "assets/mano"),
+            mano_root=str(mano_root),
             side=side,
             use_pca=mano_cfg.use_pca,
             flat_hand_mean=mano_cfg.flat_hand_mean,
@@ -203,15 +223,16 @@ def main(config: DictConfig) -> None:
 
     train_dataset = create_dataset(config, mode="train")
     train_dataset.config.load_mano_params = True
+    if len(train_dataset) == 0:
+        raise RuntimeError("The human training dataset is empty. Check the data paths and training split.")
 
-    config.algo.batch_size = int(cfg_select(config, "check_batch_size", 4))
     train_loader = InfLoader(
         DataLoader(
             train_dataset,
-            batch_size=config.algo.batch_size,
-            drop_last=True,
+            batch_size=batch_size,
+            drop_last=False,
             num_workers=0,
-            shuffle=False,
+            shuffle=True,
             collate_fn=minkowski_collate_fn,
         ),
         config.device,
@@ -246,6 +267,15 @@ def main(config: DictConfig) -> None:
         scene_id=int(cfg_select(config, "viser_scene_id", 0)),
         log_prefix="check_human_dataloader",
         next_batch_loader=load_next_batch_scene_records,
+        caption_aspects=("file", "given_grasp_type", "position_source", "point_cloud"),
+        gui_description=(
+            "Preview augmented **training** batches. Use **Next Batch** to browse; "
+            "choose **single** in Display to inspect one sample.\n\n"
+            "**Colors:** orange = object points; blue = right hand; pink = left hand; "
+            "red dots = fingertips selected by the grasp-type label.\n\n"
+            f"**Position target:** `{hand_pos_source}`. Axes mark the wrist"
+            + (" and index MCP." if hand_pos_source == "index_mcp" else ".")
+        ),
     )
 
 

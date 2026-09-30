@@ -14,6 +14,7 @@ import torch
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, ListConfig, OmegaConf, open_dict
 from tqdm import tqdm
+from dexlearn.utils.resources import portable_dataset_record
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dexlearn.dataset import GRASP_TYPES, create_test_dataloader, get_sparse_tensor
@@ -1739,7 +1740,7 @@ def sample_independent_scene_scores_and_poses(
                     ][batch_index].astype(np.float32),
                     "compatibility_used_for_selection": np.bool_(False),
                 }
-                np.savez_compressed(raw_file, **raw_payload)
+                np.savez_compressed(raw_file, **portable_dataset_record(raw_payload, getattr(config, "data_root", None)))
                 raw_hash = file_sha256(raw_file)
                 raw_relative_path = os.path.relpath(raw_file, output_dir)
 
@@ -1857,7 +1858,7 @@ def sample_independent_scene_scores_and_poses(
                 )
                 scene_file = scene_file_path(scene_dir, scene_id)
                 os.makedirs(os.path.dirname(scene_file), exist_ok=True)
-                np.save(scene_file, scene_data)
+                np.save(scene_file, {**portable_dataset_record(scene_data, getattr(config, "data_root", None)), "path_root": "HUGS_DATASET_ROOT"})
                 summary = scene_summary_from_data(scene_data, scene_file)
                 score_lines.append(summary)
                 scene_index.append(scene_index_from_summary(summary))
@@ -2347,7 +2348,7 @@ def sample_joint_scene_scores_and_poses(
                         raw_payload[key] = diagnostic_np[key][batch_index]
                 if "sampling_timesteps" in diagnostic_np:
                     raw_payload["sampling_timesteps"] = diagnostic_np["sampling_timesteps"]
-                np.savez_compressed(raw_file, **raw_payload)
+                np.savez_compressed(raw_file, **portable_dataset_record(raw_payload, getattr(config, "data_root", None)))
                 raw_hash = file_sha256(raw_file)
                 raw_relative_path = os.path.relpath(raw_file, output_dir)
 
@@ -2426,7 +2427,7 @@ def sample_joint_scene_scores_and_poses(
                 validate_joint_scene_export(scene_data, config, checkpoint_meta, output_dir=output_dir)
                 scene_file = scene_file_path(scene_dir, scene_id)
                 os.makedirs(os.path.dirname(scene_file), exist_ok=True)
-                np.save(scene_file, scene_data)
+                np.save(scene_file, {**portable_dataset_record(scene_data, getattr(config, "data_root", None)), "path_root": "HUGS_DATASET_ROOT"})
                 summary = scene_summary_from_data(scene_data, scene_file)
                 score_lines.append(summary)
                 scene_index.append(scene_index_from_summary(summary))
@@ -2835,7 +2836,7 @@ def sample_reverse_scene_scores_and_poses(
                 validate_reverse_scene_export(scene_data, config, checkpoint_meta)
                 scene_file = scene_file_path(scene_dir, scene_id)
                 os.makedirs(os.path.dirname(scene_file), exist_ok=True)
-                np.save(scene_file, scene_data)
+                np.save(scene_file, {**portable_dataset_record(scene_data, getattr(config, "data_root", None)), "path_root": "HUGS_DATASET_ROOT"})
                 summary = scene_summary_from_data(scene_data, scene_file)
                 score_lines.append(summary)
                 scene_index.append(
@@ -2963,7 +2964,7 @@ def sample_scene_scores_and_fixed_type_poses(
                 scene_data = build_scene_export_record(score_record, pose_record_by_type, config)
                 scene_file = scene_file_path(scene_dir, scene_id)
                 os.makedirs(os.path.dirname(scene_file), exist_ok=True)
-                np.save(scene_file, scene_data)
+                np.save(scene_file, {**portable_dataset_record(scene_data, getattr(config, "data_root", None)), "path_root": "HUGS_DATASET_ROOT"})
                 summary = scene_summary_from_data(scene_data, scene_file)
                 score_lines.append(summary)
                 scene_index.append(
@@ -4188,6 +4189,7 @@ def write_obj_human_prior_export(
         for row in score_lines:
             score_line = {
                 "scene_id": row["scene_id"],
+                "path_root": "HUGS_DATASET_ROOT",
                 "object_id": row["object_id"],
                 "split": row["split"],
                 "robot_name": row["robot_name"],
@@ -4201,11 +4203,12 @@ def write_obj_human_prior_export(
                 "score_semantics": row["score_semantics"],
                 "factorization": row["factorization"],
             }
-            score_handle.write(json.dumps(score_line, default=_json_default, ensure_ascii=False) + "\n")
+            score_handle.write(json.dumps(portable_dataset_record(score_line, getattr(config, "data_root", None)), default=_json_default, ensure_ascii=False) + "\n")
 
     manifest = dict(manifest)
     manifest.update(
         {
+            "path_root": "HUGS_DATASET_ROOT",
             "scene_count": len(scene_index),
             "scene_dir": scene_dir,
             "score_jsonl": score_jsonl_path,
@@ -4213,16 +4216,17 @@ def write_obj_human_prior_export(
         }
     )
     with open(scene_index_path, "w", encoding="utf-8") as index_handle:
-        json.dump(scene_index, index_handle, indent=2, ensure_ascii=False)
+        json.dump(portable_dataset_record([{**row, "path_root": "HUGS_DATASET_ROOT"} for row in scene_index], getattr(config, "data_root", None)), index_handle, indent=2, ensure_ascii=False)
     with open(manifest_path, "w", encoding="utf-8") as manifest_handle:
-        json.dump(manifest, manifest_handle, indent=2, ensure_ascii=False, default=_json_default)
+        json.dump(portable_dataset_record(manifest, getattr(config, "data_root", None)), manifest_handle, indent=2, ensure_ascii=False, default=_json_default)
 
     return {
         "output_dir": output_dir,
         "manifest": manifest_path,
         "scene_index": scene_index_path,
         "score_jsonl": score_jsonl_path,
-        "scene_count": len(scene_index),
+        "path_root": "HUGS_DATASET_ROOT",
+            "scene_count": len(scene_index),
     }
 
 

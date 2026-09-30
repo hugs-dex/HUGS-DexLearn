@@ -1,5 +1,5 @@
 mode: auto
-split: test  # Initial dataset split for human viser UI: train or test.
+split: test  # Initial Human Viser split: all, train, or test.
 
 # Sample selection. With task.visualizer=viser, the web UI Selection panel can switch these at runtime.
 visualize_mode: one_object  # random_objects, one_object, one_object_multi_seq, grasp_type

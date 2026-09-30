@@ -499,7 +499,8 @@ def load_point_cloud_descriptor(pc_path: str, max_points: int, cache: dict) -> n
     Returns:
         Three-dimensional descriptor ``[xy_long, xy_short, z_height]``.
     """
-    pc_path = _abs_path(pc_path)
+    from dexlearn.utils.resources import resolve_dataset_path
+    pc_path = resolve_dataset_path(pc_path)
     if pc_path in cache:
         return cache[pc_path]
     points = np.asarray(np.load(pc_path, allow_pickle=True), dtype=np.float64).reshape(-1, 3)

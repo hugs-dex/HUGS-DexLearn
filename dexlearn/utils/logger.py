@@ -5,10 +5,12 @@ import os
 import glob
 import numpy as np
 import numbers
+from dexlearn.utils.resources import portable_dataset_record
 
 
 class Logger:
     def __init__(self, cfg):
+        self.dataset_root = getattr(cfg, "data_root", None)
         self.config = cfg.wandb
         # ``output_id`` lets multi-phase training keep separate wandb run ids
         # while writing checkpoints into one local run directory.
@@ -139,5 +141,7 @@ class Logger:
                     else:
                         raise NotImplementedError
                 path_j = path.split(".npy")[0] + f"_{saved_index}.npy"
+                save_dict = portable_dataset_record(save_dict, self.dataset_root)
+                save_dict["path_root"] = "HUGS_DATASET_ROOT"
                 np.save(path_j, save_dict)
                 saved_index += 1

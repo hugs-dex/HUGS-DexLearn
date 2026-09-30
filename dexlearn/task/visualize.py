@@ -30,7 +30,7 @@ except ImportError:
 VISUALIZE_MODE_OPTIONS = ("random_objects", "one_scene", "one_object", "one_object_multi_seq", "grasp_type")
 ROBOT_VISER_MODE_OPTIONS = ("random_objects", "one_scene", "grasp_type")
 HUMAN_VISER_MODE_OPTIONS = ("random_objects", "one_object")
-HUMAN_VISER_SPLIT_OPTIONS = ("test", "train")
+HUMAN_VISER_SPLIT_OPTIONS = ("all", "test", "train")
 HUMAN_SCORE_SUMMARY_MAX_RECORDS = 20
 CAPTION_ASPECTS = (
     ("scene_id", "Scene ID"),
@@ -1744,6 +1744,7 @@ def add_caption_gui(
     on_show_full_caption=None,
     on_hide_full_caption=None,
     on_toggle_caption_aspect=None,
+    caption_aspects=None,
 ):
     if not hasattr(server, "gui") or not scene_records:
         return None
@@ -1765,6 +1766,8 @@ def add_caption_gui(
         show_button = server.gui.add_button("Show Full Caption")
         aspect_buttons = {}
         for aspect_id, aspect_name in CAPTION_ASPECTS:
+            if caption_aspects is not None and aspect_id not in caption_aspects:
+                continue
             aspect_buttons[aspect_id] = server.gui.add_button(aspect_name)
         if hasattr(server.gui, "add_markdown"):
             caption_handle = server.gui.add_markdown("Caption hidden.")
@@ -1851,6 +1854,9 @@ def show_scenes_with_viser(
     label_font_size_mode: str = "screen",
     label_font_screen_scale: float = 0.8,
     label_height_offset: float = 0.35,
+    caption_aspects=None,
+    gui_description: str = "",
+    frame_scenes: bool = False,
 ):
     if not VISER_AVAILABLE:
         raise ImportError(
@@ -1866,9 +1872,45 @@ def show_scenes_with_viser(
     if hasattr(server.gui, "configure_theme"):
         server.gui.configure_theme(control_layout="floating", control_width="large")
     server.scene.set_up_direction("+z")
+    if gui_description and hasattr(server.gui, "add_markdown"):
+        server.gui.add_markdown(gui_description)
     scene_handles = {"value": []}
 
     records_state = {"records": scene_records}
+
+    def frame_current_scenes(all_records=False):
+        records = records_state["records"]
+        offsets = build_grouped_scene_offsets(records, scene_spacing)
+        if state["display_mode"] == "single" and not all_records:
+            records = [records[state["scene_id"]]]
+            offsets = [np.zeros(3, dtype=np.float32)]
+        bounds = []
+        for record, offset in zip(records, offsets):
+            for geometry in record["elements"]:
+                if not hasattr(geometry, "bounds") or geometry.bounds is None:
+                    continue
+                bounds.append(np.asarray(geometry.bounds, dtype=float) + offset)
+        if not bounds:
+            return
+        bounds = np.asarray(bounds)
+        lower, upper = bounds[:, 0, :].min(axis=0), bounds[:, 1, :].max(axis=0)
+        center = (lower + upper) / 2
+        radius = max(0.5, float(np.linalg.norm(upper - lower)) * 0.85)
+        position = center + np.array([radius, -radius, radius * 0.65])
+        server.initial_camera.look_at = center
+        server.initial_camera.position = position
+        for client in server.get_clients().values():
+            client.camera.look_at = center
+            client.camera.position = position
+
+    if frame_scenes:
+        with server.gui.add_folder("Camera"):
+            frame_button = server.gui.add_button("Frame All")
+
+            @frame_button.on_click
+            def _on_frame_all(event):
+                del event
+                frame_current_scenes(all_records=True)
 
     def build_sample_options(records):
         return tuple(
@@ -1920,6 +1962,7 @@ def show_scenes_with_viser(
         on_show_full_caption=show_full_scene_captions,
         on_hide_full_caption=hide_full_scene_captions,
         on_toggle_caption_aspect=toggle_caption_aspect,
+        caption_aspects=caption_aspects,
     )
 
     def render_current_view():
@@ -1989,6 +2032,8 @@ def show_scenes_with_viser(
         if caption_gui is not None:
             caption_gui["update_records"](new_scene_records, state["scene_id"])
         render_current_view()
+        if frame_scenes:
+            frame_current_scenes()
 
     if selection_controls is not None and hasattr(server, "gui"):
         split_dropdown = None
@@ -2101,7 +2146,8 @@ def show_scenes_with_viser(
             extra_action_label = str(selection_controls.get("extra_action_button_label", ""))
             if extra_action_label and "load_action_scene_records" in selection_controls:
                 extra_action_button = server.gui.add_button(extra_action_label)
-            status_handle = server.gui.add_markdown("Selection loaded.") if hasattr(server.gui, "add_markdown") else None
+            initial_status = selection_controls.get("batch_state", {}).get("selection_info", "Selection loaded.")
+            status_handle = server.gui.add_markdown(initial_status) if hasattr(server.gui, "add_markdown") else None
 
             def update_object_info():
                 if object_info_handle is None or not hasattr(object_info_handle, "content"):
@@ -2143,6 +2189,14 @@ def show_scenes_with_viser(
                 update_object_info()
 
             def refresh_selection_widgets():
+                if split_dropdown is not None and "mode_options_for_split" in selection_controls:
+                    options = selection_controls["mode_options_for_split"](current_split_name())
+                    current_mode = str(mode_dropdown.value)
+                    set_viser_dropdown_options(mode_dropdown, options, pick_initial_option(options, current_mode))
+                if split_dropdown is not None and "grasp_type_options_for_split" in selection_controls:
+                    options = selection_controls["grasp_type_options_for_split"](current_split_name())
+                    current_type = str(grasp_type_dropdown.value)
+                    set_viser_dropdown_options(grasp_type_dropdown, options, pick_initial_option(options, current_type))
                 mode = normalize_visualize_mode(str(mode_dropdown.value))
                 object_options = selection_object_options(mode)
                 preferred_object = object_dropdown.value if hasattr(object_dropdown, "value") else None
@@ -2167,6 +2221,24 @@ def show_scenes_with_viser(
                     )
                 update_object_info()
 
+            def mark_pending_selection():
+                if "mode_options_for_split" not in selection_controls:
+                    return
+                batch_state = selection_controls["batch_state"]
+                mode = str(mode_dropdown.value)
+                key = (
+                    current_split_name(), mode,
+                    parse_grasp_type_option(grasp_type_dropdown.value) if mode == "random_objects"
+                    else str(object_dropdown.value),
+                )
+                pending = key != batch_state.get("key")
+                next_batch_button.disabled = pending or batch_state.get("page_count", 1) <= 1
+                if status_handle is not None:
+                    status_handle.content = (
+                        "Selection changed. Click Apply Selection; the previous view is still displayed."
+                        if pending else batch_state.get("selection_info", "Selection loaded.")
+                    )
+
             refresh_selection_widgets()
 
             @apply_button.on_click
@@ -2180,9 +2252,12 @@ def show_scenes_with_viser(
                     print(f"[{log_prefix}] Selection failed: {exc}")
                     return
                 if status_handle is not None and hasattr(status_handle, "content"):
-                    status_handle.content = f"Loaded {len(new_scene_records)} scene(s)."
+                    status_handle.content = selection_controls.get("batch_state", {}).get(
+                        "selection_info", f"Loaded {len(new_scene_records)} scene(s)."
+                    )
                 sync_current_object_selection()
                 update_scene_records(new_scene_records)
+                refresh_selection_widgets()
 
             @next_batch_button.on_click
             def _on_next_selection_batch(event):
@@ -2196,12 +2271,13 @@ def show_scenes_with_viser(
                     return
                 batch_index = selection_controls.get("batch_state", {}).get("index", 0)
                 if status_handle is not None and hasattr(status_handle, "content"):
-                    status_handle.content = (
-                        f"Loaded {next_button_label.lower()} {batch_index + 1} "
-                        f"with {len(new_scene_records)} scene(s)."
+                    status_handle.content = selection_controls.get("batch_state", {}).get(
+                        "selection_info",
+                        f"Loaded {next_button_label.lower()} {batch_index + 1} with {len(new_scene_records)} scene(s).",
                     )
                 sync_current_object_selection()
                 update_scene_records(new_scene_records)
+                refresh_selection_widgets()
 
             if extra_action_button is not None:
                 @extra_action_button.on_click
@@ -2225,17 +2301,25 @@ def show_scenes_with_viser(
             def _on_selection_mode_update(event):
                 del event
                 refresh_selection_widgets()
+                mark_pending_selection()
 
             if split_dropdown is not None:
                 @split_dropdown.on_update
                 def _on_selection_split_update(event):
                     del event
                     refresh_selection_widgets()
+                    mark_pending_selection()
 
             @object_dropdown.on_update
             def _on_selection_object_update(event):
                 del event
                 update_object_info()
+                mark_pending_selection()
+
+            @grasp_type_dropdown.on_update
+            def _on_selection_type_update(event):
+                del event
+                mark_pending_selection()
 
     if next_batch_loader is not None and hasattr(server, "gui"):
         with server.gui.add_folder("Dataloader"):
@@ -2265,6 +2349,8 @@ def show_scenes_with_viser(
         del event
         state["display_mode"] = str(display_dropdown.value)
         render_current_view()
+        if frame_scenes:
+            frame_current_scenes()
 
     @scene_dropdown.on_update
     def _on_scene_update(event):
@@ -2272,8 +2358,12 @@ def show_scenes_with_viser(
         state["scene_id"] = sample_options_state["options"].index(scene_dropdown.value)
         if state["display_mode"] == "single":
             render_current_view()
+            if frame_scenes:
+                frame_current_scenes()
 
     render_current_view()
+    if frame_scenes:
+        frame_current_scenes()
 
     print(f"[{log_prefix}] Viser server running at http://localhost:{port}")
     print(f"[{log_prefix}] Rendering {len(records_state['records'])} scene(s). Press Ctrl+C to quit.")
@@ -2318,36 +2408,23 @@ def get_output_dir(config: DictConfig) -> str:
 
 
 def resolve_human_dataset_path(path):
-    """Replace legacy /AnyScaleGrasp/ prefixes with AnyScaleGraspDataset."""
-    if "/AnyScaleGrasp/" in path:
-        path = path.split("/AnyScaleGrasp/", 1)[1]
-        dataset_root = (os.environ.get("ANYSCALEGRASP_DATA_ROOT") or os.environ.get("AnyScaleGraspDataset"))
-        if not dataset_root:
-            raise ValueError("AnyScaleGraspDataset environment variable not set")
-        return os.path.join(dataset_root, path)
-    return path
+    """Resolve dataset-relative records using the configured dataset root."""
+    from dexlearn.utils.resources import resolve_dataset_path
+    return resolve_dataset_path(path)
 
 
 def resolve_robot_dataset_path(path: str, object_root: str) -> str:
-    if os.path.exists(path):
+    """Resolve a dataset-relative path without inferring historical prefixes."""
+    if os.path.isabs(path):
         return path
-
-    if "/AnyScaleGrasp/" in path:
-        relative_path = path.split("/AnyScaleGrasp/", 1)[1]
-        dataset_root = (os.environ.get("ANYSCALEGRASP_DATA_ROOT") or os.environ.get("AnyScaleGraspDataset"))
-        if dataset_root:
-            resolved = os.path.join(dataset_root, relative_path)
-            if os.path.exists(resolved):
-                return resolved
-
-    if "/object/" in path and "/object/" in object_root:
-        suffix = path.split("/object/", 1)[1]
-        dataset_root = object_root.split("/object/", 1)[0]
-        resolved = os.path.join(dataset_root, "object", suffix)
-        if os.path.exists(resolved):
-            return resolved
-
-    return path
+    resolved = resolve_human_dataset_path(path)
+    if os.path.exists(resolved):
+        return resolved
+    normalized_root = os.path.normpath(object_root)
+    marker = f"{os.sep}object{os.sep}"
+    if marker in normalized_root and path.startswith("object/"):
+        return os.path.join(normalized_root.split(marker, 1)[0], path)
+    return resolved
 
 
 def visualize_with_trimesh(verts, faces, joints=None, color=[200, 200, 250, 255]):
@@ -2463,19 +2540,15 @@ def build_human_visualization_index(sample_records, grasp_type_names):
 
     Returns:
         Dictionary containing canonical-object-level score and pose indexes.
-        Score summaries may come from legacy ``0_any`` score-only samples or
-        from newer explicit-type pose samples that also store
-        ``pred_grasp_type_prob``.
+        Score summaries come only from dedicated ``0_any`` samples.
     """
     object_ids = set()
     score_records_by_object = {}
-    score_candidate_records_by_object = {}
     pose_records_by_object_and_type = {}
 
     for record in sample_records:
         base_object_id = base_object_id_from_sequence(record["object_id"])
         object_ids.add(base_object_id)
-        score_candidate_records_by_object.setdefault(base_object_id, []).append(record)
         sample_group = str(record.get("sample_group", ""))
         grasp_type_id = sample_group_to_grasp_type_id(sample_group)
         if grasp_type_id is None:
@@ -2491,11 +2564,30 @@ def build_human_visualization_index(sample_records, grasp_type_names):
         "records": sample_records,
         "object_ids": tuple(sorted(object_ids, key=natural_sort_key)),
         "score_records_by_object": score_records_by_object,
-        "score_candidate_records_by_object": score_candidate_records_by_object,
         "pose_records_by_object_and_type": pose_records_by_object_and_type,
         "grasp_type_names": tuple(grasp_type_names),
         "score_summary_cache": {},
     }
+
+
+def human_available_modes(human_index):
+    modes = []
+    if human_index["score_records_by_object"] or human_index["pose_records_by_object_and_type"]:
+        modes.append("random_objects")
+    if human_index["pose_records_by_object_and_type"]:
+        modes.append("one_object")
+    return tuple(modes)
+
+
+def human_available_grasp_type_ids(human_index):
+    type_ids = {0} if human_index["score_records_by_object"] else set()
+    for records_by_type in human_index["pose_records_by_object_and_type"].values():
+        type_ids.update(type_id for type_id, records in records_by_type.items() if records)
+    return tuple(sorted(type_ids))
+
+
+def human_page_count(item_count: int, page_size: int) -> int:
+    return max(1, (item_count + page_size - 1) // page_size)
 
 
 def load_human_split_object_ids(config: DictConfig, split_names=HUMAN_VISER_SPLIT_OPTIONS):
@@ -2515,6 +2607,8 @@ def load_human_split_object_ids(config: DictConfig, split_names=HUMAN_VISER_SPLI
     split_root = os.path.join(object_path, split_path)
     split_object_ids = {}
     for split_name in split_names:
+        if split_name == "all":
+            continue
         path = os.path.join(split_root, f"{split_name}.json")
         object_ids = set()
         try:
@@ -2537,14 +2631,16 @@ def build_human_visualization_indices_by_split(sample_records, grasp_type_names,
         split_object_ids: Mapping from split name to canonical object id set.
 
     Returns:
-        A dictionary mapping split name to a human visualization index. Records
-        whose base object id is not present in any requested split are excluded
-        to prevent train/test samples from being mixed in the UI.
+        A dictionary mapping split name to a human visualization index.
+        ``all`` contains each saved record once; train/test use the split files.
     """
-    records_by_split = {split_name: [] for split_name in split_object_ids}
+    records_by_split = {"all": list(sample_records)}
+    records_by_split.update({split: [] for split in split_object_ids if split != "all"})
     for record in sample_records:
         base_object_id = base_object_id_from_sequence(record["object_id"])
         for split_name, object_ids in split_object_ids.items():
+            if split_name == "all":
+                continue
             if base_object_id in object_ids:
                 records_by_split.setdefault(split_name, []).append(record)
                 break
@@ -2581,48 +2677,29 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
         return cached
 
     dedicated_score_records = human_index["score_records_by_object"].get(object_id, [])
-    fallback_score_records = human_index["score_candidate_records_by_object"].get(object_id, [])
-    if not dedicated_score_records and not fallback_score_records:
+    if not dedicated_score_records:
         return None
 
     score_vectors = []
     scored_records = []
     representative_record = None
     representative_data = None
-    seen_paths = set()
-    candidate_groups = [dedicated_score_records]
-    if not dedicated_score_records:
-        candidate_groups.append(fallback_score_records)
-    else:
-        # Keep a fallback for mixed output directories where 0_any exists but
-        # does not carry the latest score field.
-        candidate_groups.append(fallback_score_records)
-
-    for candidate_records in candidate_groups:
-        records_to_scan = list(candidate_records)
-        if len(records_to_scan) > HUMAN_SCORE_SUMMARY_MAX_RECORDS:
-            records_to_scan = random.sample(records_to_scan, k=HUMAN_SCORE_SUMMARY_MAX_RECORDS)
-        for record in records_to_scan:
-            sample_file = record.get("sample_file")
-            if sample_file in seen_paths:
-                continue
-            seen_paths.add(sample_file)
-            load_visualization_record_payload(
-                record,
-                scene_path_resolver=scene_path_resolver,
-                load_scene_cfg=False,
-            )
-            data = record.get("data") or {}
-            scores = get_human_score_vector_from_data(data, human_index["grasp_type_names"])
-            if scores is None:
-                continue
-            if representative_record is None:
-                representative_record = record
-                representative_data = data
-            score_vectors.append(scores)
-            scored_records.append(record)
-        if score_vectors:
-            break
+    records_to_scan = dedicated_score_records[:HUMAN_SCORE_SUMMARY_MAX_RECORDS]
+    for record in records_to_scan:
+        load_visualization_record_payload(
+            record,
+            scene_path_resolver=scene_path_resolver,
+            load_scene_cfg=False,
+        )
+        data = record.get("data") or {}
+        scores = get_human_score_vector_from_data(data, human_index["grasp_type_names"])
+        if scores is None:
+            continue
+        if representative_record is None:
+            representative_record = record
+            representative_data = data
+        score_vectors.append(scores)
+        scored_records.append(record)
 
     if not score_vectors:
         return None
@@ -2631,6 +2708,7 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
     summary = {
         "object_id": object_id,
         "scores": mean_scores,
+        "sample_count": len(scored_records),
         "score_records": scored_records,
         "representative_record": representative_record,
         "representative_data": representative_data,
@@ -2709,17 +2787,13 @@ def compact_human_label_caption(
     Returns:
         Short multi-field caption string suitable for default 3D labels.
     """
-    del object_id, sample_rank, grasp_error
+    del sample_rank, grasp_error
     mode = normalize_visualize_mode(mode)
-    if score_summary is None:
-        return ""
-    if mode == "random_objects":
-        return format_score_array_text(score_summary["scores"])
-
-    if 1 <= int(grasp_type_id) < len(GRASP_TYPES):
-        score = float(score_summary["scores"][int(grasp_type_id) - 1])
-        return f"{GRASP_TYPES[int(grasp_type_id)]} | {score:.2f}"
-    return ""
+    if int(grasp_type_id) == 0 and score_summary is not None:
+        scores = np.asarray(score_summary["scores"]).reshape(-1)
+        top_type = int(np.argmax(scores)) + 1
+        return f"{object_id} n={score_summary['sample_count']} {top_type}:{scores[top_type - 1]:.2f}"
+    return GRASP_TYPES[int(grasp_type_id)] if int(grasp_type_id) > 0 else ""
 
 
 def sample_human_random_object_records(
@@ -2744,7 +2818,10 @@ def sample_human_random_object_records(
     candidates = []
     object_ids = tuple(fixed_object_ids) if fixed_object_ids is not None else human_index["object_ids"]
     for object_id in object_ids:
-        score_summary = human_object_score_summary(human_index, object_id, resolve_human_dataset_path)
+        score_summary = (
+            human_object_score_summary(human_index, object_id, resolve_human_dataset_path)
+            if grasp_type_id == 0 else None
+        )
         if grasp_type_id == 0:
             if score_summary is None or score_summary["representative_record"] is None:
                 continue
@@ -2799,7 +2876,6 @@ def sample_human_one_object_records(
         List of dictionaries describing selected pose records ordered by grasp type.
     """
     object_id = base_object_id_from_sequence(object_id)
-    score_summary = human_object_score_summary(human_index, object_id, resolve_human_dataset_path)
     selected = []
     for grasp_type_id in range(1, len(human_index["grasp_type_names"])):
         pose_records = sorted(
@@ -2808,16 +2884,13 @@ def sample_human_one_object_records(
         )
         if not pose_records:
             continue
-        pose_records = slice_records_batch(
-            pose_records,
-            max(0, int(per_type_grasps)),
-            batch_index,
-        )
-        for sample_rank, record in enumerate(pose_records, start=1):
+        page_size = max(1, int(per_type_grasps))
+        page_start = batch_index * page_size
+        for sample_rank, record in enumerate(pose_records[page_start:page_start + page_size], start=page_start + 1):
             selected.append(
                 {
                     "object_id": object_id,
-                    "score_summary": score_summary,
+                    "score_summary": None,
                     "record": record,
                     "grasp_type_id": grasp_type_id,
                     "sample_rank": sample_rank,
@@ -2825,6 +2898,107 @@ def sample_human_one_object_records(
                 }
             )
     return selected
+
+
+def build_human_selection_controls(
+    config, indices_by_split, initial_split, build_scene_records,
+    random_object_count=25, per_type_grasps=5,
+):
+    """Build Human selection state independently of MANO and the Viser server."""
+    random_object_count = max(1, int(random_object_count))
+    per_type_grasps = max(1, int(per_type_grasps))
+    split_options = tuple(split for split in HUMAN_VISER_SPLIT_OPTIONS if split in indices_by_split)
+    initial_index = indices_by_split[initial_split]
+    modes = human_available_modes(initial_index)
+    if not modes:
+        raise ValueError("No supported Human score or pose sample groups found.")
+    requested_mode = normalize_visualize_mode(get_task_value(config, "visualize_mode", "random_objects"))
+    initial_mode = pick_initial_option(modes, requested_mode)
+    batch_state = {"key": None, "index": 0, "selection_info": ""}
+    pools = {}
+
+    def object_options(mode, split_name=None):
+        index = indices_by_split[split_name or initial_split]
+        if mode == "one_object":
+            return tuple(obj for obj in index["object_ids"] if index["pose_records_by_object_and_type"].get(obj))
+        return index["object_ids"]
+
+    def type_options(split_name):
+        return tuple(
+            format_grasp_type_option(i, GRASP_TYPES)
+            for i in human_available_grasp_type_ids(indices_by_split[split_name])
+        )
+
+    def load_scene_records(mode, object_id, grasp_type_option, advance_batch=False, split_name=None):
+        started = time.perf_counter()
+        split_name = split_name or initial_split
+        index = indices_by_split[split_name]
+        if mode not in human_available_modes(index):
+            raise ValueError(f"No pose samples available for {mode} in {split_name}.")
+        type_id = parse_grasp_type_option(grasp_type_option)
+        key = (split_name, mode, type_id if mode == "random_objects" else object_id)
+        next_index = batch_state["index"] + 1 if advance_batch and key == batch_state["key"] else 0
+        if mode == "random_objects":
+            if type_id not in human_available_grasp_type_ids(index):
+                raise ValueError(f"No samples for grasp type {type_id} in {split_name}.")
+            pool_key = (split_name, type_id)
+            if pool_key not in pools:
+                pool = [obj for obj in index["object_ids"] if (
+                    index["score_records_by_object"].get(obj) if type_id == 0 else
+                    index["pose_records_by_object_and_type"].get(obj, {}).get(type_id)
+                )]
+                random.shuffle(pool)
+                pools[pool_key] = pool
+            pool = pools[pool_key]
+            page_count = human_page_count(len(pool), random_object_count)
+            page = next_index % page_count
+            entries = sample_human_random_object_records(
+                index, type_id, random_object_count,
+                fixed_object_ids=pool[page * random_object_count:(page + 1) * random_object_count],
+            )
+        else:
+            records_by_type = index["pose_records_by_object_and_type"].get(object_id, {})
+            if not records_by_type:
+                raise ValueError(f"No pose samples for object {object_id} in {split_name}.")
+            page_count = max(human_page_count(len(records), per_type_grasps) for records in records_by_type.values())
+            page = next_index % page_count
+            entries = sample_human_one_object_records(index, object_id, per_type_grasps, page)
+        if not entries:
+            raise ValueError("No readable samples for this selection. The previous view is unchanged.")
+        scenes = build_scene_records(entries, mode)
+        wrapped = next_index >= page_count
+        info = f"Loaded {split_name} / {mode}: Page {page + 1}/{page_count}."
+        if wrapped:
+            info += " Returned to first page."
+        if mode == "one_object":
+            info += " Rows with no remaining poses are empty."
+        batch_state.update(key=key, index=page, page_count=page_count, selection_info=info)
+        print(f"[visualize] {info} Built {len(scenes)} scene(s) in {time.perf_counter() - started:.2f}s.")
+        return scenes
+
+    return {
+        "mode_options": modes,
+        "mode_options_for_split": lambda split: human_available_modes(indices_by_split[split]),
+        "grasp_type_options_for_split": type_options,
+        "split_options": split_options,
+        "initial_split": initial_split,
+        "initial_mode": initial_mode,
+        "object_options": initial_index["object_ids"],
+        "base_object_options": initial_index["object_ids"],
+        "initial_object": pick_initial_object_option(
+            object_options(initial_mode), get_task_value(config, "object_id", None)
+        ),
+        "grasp_type_options": type_options(initial_split),
+        "initial_grasp_type": pick_initial_option(
+            type_options(initial_split), get_task_value(config, "target_grasp_type_id", 0)
+        ),
+        "load_scene_records": load_scene_records,
+        "batch_state": batch_state,
+        "object_options_for_mode": object_options,
+        "disable_object_for_mode": lambda mode: mode == "random_objects",
+        "disable_grasp_type_for_mode": lambda mode: mode == "one_object",
+        "disable_next_batch_for_mode": lambda mode: batch_state.get("page_count", 1) <= 1,
+    }
 
 
 def task_visualize_human(config: DictConfig) -> None:
@@ -2848,8 +3022,6 @@ def task_visualize_human(config: DictConfig) -> None:
     viser_scene_spacing = float(get_task_value(config, "viser_scene_spacing", 0.8))
     viser_display_mode = str(get_task_value(config, "viser_display_mode", "all"))
     viser_scene_id = int(get_task_value(config, "viser_scene_id", 0))
-    is_our_human_grasp_format = is_our_human_grasp_format_test_data(config)
-
     mano_layers = {}
     for side in ["left", "right"]:
         mano_layers[side] = ManoLayer(
@@ -3019,7 +3191,9 @@ def task_visualize_human(config: DictConfig) -> None:
             if grasp_type_id == 0:
                 full_caption = (
                     f"{entry['scene_label']} | file={os.path.basename(sample_file)} | "
-                    f"scores={format_score_array_text(score_summary['scores'])} | "
+                    f"type branch object mean (n={score_summary['sample_count']})="
+                    f"{format_score_array_text(score_summary['scores'])} | "
+                    f"representative point cloud | "
                     f"PC: {infer_pc_source_from_sample_file(sample_file)}"
                 )
                 label_caption = compact_human_label_caption(
@@ -3030,13 +3204,10 @@ def task_visualize_human(config: DictConfig) -> None:
                 )
             else:
                 grasp_error = float(data["grasp_error"]) if "grasp_error" in data else None
-                type_score = None if score_summary is None else float(score_summary["scores"][grasp_type_id - 1])
                 full_caption = (
                     f"{entry['scene_label']} | file={os.path.basename(sample_file)} | "
                     f"type={GRASP_TYPES[grasp_type_id]} | "
                 )
-                if type_score is not None:
-                    full_caption += f"type_score={type_score:.4f} | "
                 if grasp_error is not None:
                     full_caption += f"err={grasp_error:.4f} | "
                 full_caption += f"Pos: {grasp_pos_source} | PC: {infer_pc_source_from_sample_file(sample_file)}"
@@ -3058,161 +3229,37 @@ def task_visualize_human(config: DictConfig) -> None:
                 scene_record["viser_spatial_group"] = entry["spatial_group"]
             elif mode == "one_object" and grasp_type_id > 0:
                 scene_record["viser_grid_row"] = grasp_type_id - 1
-                scene_record["viser_grid_col"] = max(0, int(entry.get("sample_rank", 1)) - 1)
+                scene_record["viser_grid_col"] = max(0, int(entry.get("sample_rank", 1)) - 1) % one_object_per_type
                 scene_record["viser_grid_rows"] = len(GRASP_TYPES) - 1
                 scene_record["viser_grid_cols"] = one_object_per_type
             scene_records.append(scene_record)
         return scene_records
 
-    def build_human_selection_controls():
-        """Build human-specific viser selection controls for the new sample semantics."""
-        initial_mode = normalize_visualize_mode(get_task_value(config, "visualize_mode", "random_objects"))
-        if initial_mode not in HUMAN_VISER_MODE_OPTIONS:
-            initial_mode = "random_objects"
-
-        initial_human_index = get_human_index_for_split(initial_split)
-        object_options = initial_human_index["object_ids"] or ("",)
-
-        def object_ids_with_pose_records(human_index):
-            return tuple(
-                object_id
-                for object_id in human_index["object_ids"]
-                if any(human_index["pose_records_by_object_and_type"].get(object_id, {}).values())
-            )
-
-        def available_grasp_type_ids(human_index):
-            grasp_type_ids = set()
-            if human_index["score_candidate_records_by_object"]:
-                grasp_type_ids.add(0)
-            for records_by_type in human_index["pose_records_by_object_and_type"].values():
-                grasp_type_ids.update(
-                    grasp_type_id for grasp_type_id, records in records_by_type.items() if records
-                )
-            return tuple(sorted(grasp_type_ids)) or (0,)
-
-        pose_object_options = object_ids_with_pose_records(initial_human_index)
-        if initial_mode == "one_object" and not pose_object_options:
-            print(
-                "[visualize] No typed human pose samples found for one_object mode; "
-                "falling back to random_objects score view."
-            )
-            initial_mode = "random_objects"
-
-        initial_object_options = pose_object_options if initial_mode == "one_object" and pose_object_options else object_options
-        grasp_type_options = tuple(
-            format_grasp_type_option(idx, GRASP_TYPES) for idx in available_grasp_type_ids(initial_human_index)
-        )
-        initial_object = pick_initial_object_option(initial_object_options, get_task_value(config, "object_id", None))
-        initial_grasp_type = pick_initial_option(grasp_type_options, get_task_value(config, "target_grasp_type_id", 0))
-        batch_state = {"key": None, "index": 0}
-        random_object_state = {"pool_by_split": {}}
-
-        def object_options_for_split(split_name: str, mode: str = "random_objects"):
-            human_index = get_human_index_for_split(split_name)
-            if normalize_visualize_mode(mode) == "one_object":
-                return object_ids_with_pose_records(human_index) or ("",)
-            return human_index["object_ids"] or ("",)
-
-        def build_random_object_pool(split_name: str):
-            if split_name in random_object_state["pool_by_split"]:
-                return random_object_state["pool_by_split"][split_name]
-            human_index = get_human_index_for_split(split_name)
-            object_pool = []
-            for object_id in human_index["object_ids"]:
-                if human_object_score_summary(human_index, object_id, resolve_human_dataset_path) is not None:
-                    object_pool.append(object_id)
-            random.shuffle(object_pool)
-            random_object_state["pool_by_split"][split_name] = tuple(object_pool)
-            return random_object_state["pool_by_split"][split_name]
-
-        def select_random_object_batch(split_name: str, batch_index: int, reshuffle: bool = False):
-            if reshuffle and split_name in random_object_state["pool_by_split"]:
-                random_object_state["pool_by_split"].pop(split_name, None)
-            object_pool = build_random_object_pool(split_name)
-            if not object_pool:
-                return ()
-            return tuple(
-                slice_records_batch(
-                    object_pool,
-                    random_object_scene_count,
-                    batch_index,
-                )
-            )
-
-        def load_scene_records(mode, object_id, grasp_type_option, advance_batch=False, split_name=None):
-            split_name = str(split_name or initial_split)
-            human_index = get_human_index_for_split(split_name)
-            mode = normalize_visualize_mode(mode)
-            grasp_type_id = parse_grasp_type_option(grasp_type_option) if grasp_type_option else 0
-            selection_key = (split_name, mode) if mode == "random_objects" else (split_name, mode, str(object_id))
-            selection_changed = selection_key != batch_state["key"]
-            if selection_key != batch_state["key"]:
-                batch_state["key"] = selection_key
-                batch_state["index"] = 0
-            elif advance_batch:
-                batch_state["index"] += 1
-            elif not advance_batch and mode != "random_objects":
-                batch_state["index"] = 0
-
-            if mode == "random_objects":
-                batch_object_ids = select_random_object_batch(
-                    split_name,
-                    batch_state["index"],
-                    reshuffle=selection_changed,
-                )
-                entry_records = sample_human_random_object_records(
-                    human_index,
-                    grasp_type_id=grasp_type_id,
-                    max_objects=random_object_scene_count,
-                    fixed_object_ids=batch_object_ids,
-                )
-            elif mode == "one_object":
-                entry_records = sample_human_one_object_records(
-                    human_index,
-                    object_id=object_id,
-                    per_type_grasps=one_object_per_type,
-                    batch_index=batch_state["index"],
-                )
-            else:
-                raise ValueError(
-                    f"Unsupported human visualize_mode={mode}. Expected one of {list(HUMAN_VISER_MODE_OPTIONS)}."
-                )
-
-            if not entry_records:
-                raise RuntimeError(
-                    f"No human visualization entries matched mode={mode}, object_id={object_id}, "
-                    f"grasp_type_id={grasp_type_id}."
-                )
-            return build_human_scene_records(entry_records, mode)
-
-        return {
-            "mode_options": HUMAN_VISER_MODE_OPTIONS,
-            "split_options": split_options,
-            "initial_split": initial_split,
-            "initial_mode": initial_mode,
-            "object_options": object_options,
-            "base_object_options": object_options,
-            "initial_object": initial_object,
-            "grasp_type_options": grasp_type_options,
-            "initial_grasp_type": initial_grasp_type,
-            "load_scene_records": load_scene_records,
-            "batch_state": batch_state,
-            "object_options_for_mode": lambda mode, split_name=None: object_options_for_split(
-                split_name or initial_split,
-                mode,
-            ),
-            "disable_object_for_mode": lambda mode: normalize_visualize_mode(mode) == "random_objects",
-            "disable_grasp_type_for_mode": lambda mode: normalize_visualize_mode(mode) == "one_object",
-            "disable_next_batch_for_mode": lambda mode: False,
-        }
-
     if visualizer == "viser":
-        selection_controls = build_human_selection_controls()
+        selection_controls = build_human_selection_controls(
+            config, human_indices_by_split, initial_split, build_human_scene_records,
+            random_object_scene_count, one_object_per_type,
+        )
         scene_records = selection_controls["load_scene_records"](
             selection_controls["initial_mode"],
             selection_controls["initial_object"],
             selection_controls["initial_grasp_type"],
         )
+        sample_groups = {sample_group_to_grasp_type_id(record["sample_group"]) for record in all_sample_records}
+        branch = (
+            "type scores"
+            if sample_groups == {0}
+            else "pose samples"
+            if 0 not in sample_groups
+            else "mixed samples"
+        )
+        caption_aspects = (
+            ("object_id", "file", "point_cloud", "other")
+            if sample_groups == {0}
+            else ("scene_id", "file", "position_source", "point_cloud", "error", "other")
+        )
+        experiment = str(OmegaConf.select(config, "exp_name") or OmegaConf.select(config, "wandb.id") or "unknown")
+        checkpoint = os.path.basename(str(config.ckpt))
         show_scenes_with_viser(
             scene_records,
             port=viser_port,
@@ -3221,6 +3268,11 @@ def task_visualize_human(config: DictConfig) -> None:
             scene_id=viser_scene_id,
             log_prefix="visualize_human",
             selection_controls=selection_controls,
+            gui_description=f"**Human Prior:** {branch} | **Experiment:** {experiment} | **Checkpoint:** {checkpoint}"
+                            "\n\nType scores: dedicated `0_any` samples only. Pose view has no trained type scores.",
+            frame_scenes=True,
+            label_font_screen_scale=0.6,
+            caption_aspects=caption_aspects,
         )
     else:
         initial_mode = normalize_visualize_mode(get_task_value(config, "visualize_mode", "random_objects"))

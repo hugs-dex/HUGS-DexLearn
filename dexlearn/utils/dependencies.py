@@ -9,5 +9,5 @@ def require_module(name, purpose):
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             f"{purpose} requires {name} (missing {exc.name}). "
-            "See docs/installation.md; no fallback algorithm is used."
+            "See README.md (Installation); no fallback algorithm is used."
         ) from exc

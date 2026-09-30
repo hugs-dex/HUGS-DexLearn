@@ -3,12 +3,48 @@
 import os
 from pathlib import Path
 
+import numpy as np
 from omegaconf import ListConfig, OmegaConf
 
 
 def data_root():
-    """Return the data root, with the historical variable as an alias."""
-    return Path(os.environ.get("ANYSCALEGRASP_DATA_ROOT") or os.environ.get("AnyScaleGraspDataset") or "assets")
+    """Return the public dataset root."""
+    return Path(os.environ.get("HUGS_DATASET_ROOT") or "assets")
+
+
+def resolve_dataset_path(value, root=None):
+    """Resolve a dataset-relative reference without historical path inference."""
+    path = Path(str(value)).expanduser()
+    if path.is_absolute():
+        return str(path)
+    if ".." in path.parts:
+        raise ValueError(f"Dataset reference escapes HUGS_DATASET_ROOT: {value}")
+    return str(Path(root) / path if root is not None else data_root() / path)
+
+
+def portable_dataset_record(value, root=None):
+    """Copy nested metadata, making paths under the dataset root relative.
+
+    Use lexical paths first so immutable bundle symlinks retain their public
+    layout. Numeric arrays and paths outside the dataset are left unchanged.
+    """
+    base = Path(os.path.abspath(os.path.expanduser(str(root if root is not None else data_root()))))
+    if isinstance(value, dict):
+        return {key: portable_dataset_record(item, base) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(portable_dataset_record(item, base) for item in value)
+    if isinstance(value, np.ndarray) and value.dtype.kind in {"U", "O"}:
+        converted = [portable_dataset_record(item, base) for item in value.flat]
+        result = np.empty(value.shape, dtype=object)
+        for index, item in enumerate(converted):
+            result.flat[index] = item
+        return result.astype(str) if value.dtype.kind == "U" else result
+    if isinstance(value, (str, Path)) and os.path.isabs(value):
+        try:
+            return Path(os.path.abspath(value)).relative_to(base).as_posix()
+        except ValueError:
+            pass
+    return value
 
 
 def require_path(value, label, *, directory=False):
@@ -16,7 +52,7 @@ def require_path(value, label, *, directory=False):
     valid = path.is_dir() if directory else path.is_file()
     if not valid:
         raise FileNotFoundError(
-            f"Missing {label}: {path}. Configure ANYSCALEGRASP_DATA_ROOT to a data bundle, "
+            f"Missing {label}: {path}. Configure HUGS_DATASET_ROOT to a data bundle, "
             "HUGS_ASSET_ROOT for robot assets, MANO_ROOT for MANO models, or the explicit task path. "
             "This source + contract release does not supply data or checkpoints."
         )

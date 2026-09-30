@@ -51,7 +51,9 @@ def test_every_task_imports_without_optional_assets(name):
 def test_imports_resolve_outside_private_checkouts():
     for name in ("dexlearn", "torch", "diffusers", "nflows", "pytorch3d"):
         module = importlib.import_module(name)
-        assert "/AnyScaleDexLearn/" not in str(module.__file__)
+        assert Path(module.__file__).resolve().is_relative_to(
+            Path(__file__).resolve().parents[1] if name == "dexlearn" else Path(sys.prefix).resolve()
+        )
 
 
 def test_valid_export_and_checkpoint_manifest(tmp_path):

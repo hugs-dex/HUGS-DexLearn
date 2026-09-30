@@ -1,4 +1,4 @@
-data_root: ${oc.env:ANYSCALEGRASP_DATA_ROOT,${oc.env:AnyScaleGraspDataset,assets}}
+data_root: ${oc.env:HUGS_DATASET_ROOT,assets}
 asset_root: ${oc.env:HUGS_ASSET_ROOT,assets}
 mano_root: ${oc.env:MANO_ROOT,assets/mano}
 output_folder: ${oc.env:HUGS_OUTPUT_ROOT,output}

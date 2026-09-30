@@ -19,7 +19,7 @@ def get_task(name):
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             f"Task {name!r} requires missing dependency {exc.name!r}. "
-            "See docs/installation.md for the corresponding runtime profile."
+            "See README.md (Installation) for the corresponding runtime profile."
         ) from exc
     return getattr(module, f"task_{name}")
 

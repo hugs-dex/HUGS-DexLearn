@@ -1,6 +1,6 @@
 # 完整工作流参考
 
-下列训练、采样、导出、评估与可视化接口随源码保留，运行前按 installation.md 准备所需输入。
+下列训练、采样、导出、评估与可视化接口随源码保留，运行前按 [README 安装说明](../README.md#installation) 准备所需输入。
 这些命令不是本次真实训练验证证据。预处理会修改输入 grasp，应在明确的数据工作副本上使用。
 
 ## Algorithm 与 data 配对
@@ -110,9 +110,9 @@ CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=human_preprocess data=humanM
 Inspect human dataloader samples after preprocessing and before training. This visualization follows the configured `hand_pos_source` in `dexlearn/config/data/humanMulti.yaml`.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python tests/check_human_dataloader.py data=humanMulti data.hand_pos_source=<wrist/index_mcp> exp_name=<EXP_NAME>
+CUDA_VISIBLE_DEVICES=0 python -m dexlearn.scripts.check_human_dataloader data=humanMulti data.hand_pos_source=<wrist/index_mcp>
 
-# e.g.: CUDA_VISIBLE_DEVICES=0 python tests/check_human_dataloader.py data=humanMulti data.hand_pos_source=index_mcp exp_name=example
+# e.g.: CUDA_VISIBLE_DEVICES=0 python -m dexlearn.scripts.check_human_dataloader data=humanMulti data.hand_pos_source=index_mcp
 ```
 
 ### Train

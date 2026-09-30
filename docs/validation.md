@@ -1,7 +1,7 @@
 # 首发验证与限制
 
 首发范围是 source + contract；所有指定功能源码保留。测试使用独立 Python 3.10 环境，
-不借用私有 AnyScaleDexLearn 的 editable 安装或模型输出。
+不借用私有研发 checkout 的 editable 安装或模型输出。
 
 | 检查 | 已运行结果 |
 | --- | --- |
@@ -33,3 +33,19 @@ GitHub CI 文件已提供，未声称远端 Actions 已执行。
 
 已检查的 public bundle 缺少 checkpoint、MANO、导出的 human prior 和部分人手 canonical mesh。
 源码保留相应能力；缺少输入时不能以原研发目录作为 fallback。
+
+## Source installation check (2026-09-25)
+
+The updated README installation was tested in a fresh Python 3.10.12 environment
+with uv 0.11.32, using only dependencies and build settings in `pyproject.toml`.
+PyTorch3D 0.7.8 was built from official commit
+`75ebeeaea0908c5527e7b1e305fbc7681382db47`; no conda archive was used.
+
+- All 151 CPU tests passed; a separate installation without submodules passed all 87 public tests.
+- PyTorch3D CUDA KNN and MinkowskiEngine CUDA convolution passed forward/backward checks.
+- The HUGS point-cloud backbone passed a CUDA forward check; visualization modules imported successfully.
+- Dependency checks, Hydra configuration resolution, wheel and source-package builds passed.
+- Build platform: Linux x86_64, GCC 11.4, CUDA toolkit 12.4, RTX 4090, PyTorch 2.2.2+cu121.
+
+These extension checks extend the initial validation above. Full training,
+checkpoint inference, MANO model execution, and interactive rendering remain untested.
