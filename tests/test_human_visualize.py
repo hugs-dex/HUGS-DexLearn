@@ -20,6 +20,7 @@ from dexlearn.task.visualize import (
     human_available_modes,
     human_object_score_summary,
     load_human_scores_index,
+    resolve_human_scores_dir,
 )
 
 
@@ -127,7 +128,7 @@ def test_pose_score_panel_uses_loaded_object_and_survives_paging():
 
 
 def test_score_index_requires_0_any_and_skips_bad_samples(tmp_path):
-    with pytest.raises(ValueError, match="must contain a 0_any directory"):
+    with pytest.raises(ValueError, match="contain a 0_any directory"):
         load_human_scores_index(tmp_path)
     sample_dir = tmp_path / "0_any" / "object_a"
     sample_dir.mkdir(parents=True)
@@ -137,6 +138,31 @@ def test_score_index_requires_0_any_and_skips_bad_samples(tmp_path):
     summary = human_object_score_summary(index, "object_a", lambda path: path)
     np.testing.assert_allclose(summary["scores"], np.arange(1, 6) / 10)
     assert summary["sample_count"] == 1
+
+
+@pytest.mark.parametrize("checkpoint", ["000300", "300", "step_000300.pth"])
+def test_resolve_human_scores_dir_from_branch_and_checkpoint(tmp_path, checkpoint):
+    config = OmegaConf.create({
+        "output_folder": str(tmp_path / "output"),
+        "data_name": "humanMulti",
+        "algo_name": "humanMultiHierar",
+        "test_data": {"name": "humanMulti"},
+        "task": {
+            "human_scores_exp_name": "prior_type",
+            "human_scores_ckpt": checkpoint,
+            "human_scores_dir": None,
+        },
+    })
+    expected = tmp_path / "output/humanMulti_humanMultiHierar_prior_type/tests/step_000300/humanMulti"
+    assert resolve_human_scores_dir(config) == str(expected)
+    config.task.human_scores_dir = str(tmp_path / "custom")
+    assert resolve_human_scores_dir(config) == str(tmp_path / "custom")
+
+
+def test_resolve_human_scores_dir_rejects_partial_branch_config():
+    config = OmegaConf.create({"task": {"human_scores_exp_name": "prior_type"}})
+    with pytest.raises(ValueError, match="Set both task.human_scores_exp_name"):
+        resolve_human_scores_dir(config)
 
 
 def test_gui_score_panel_updates_only_from_loaded_records():

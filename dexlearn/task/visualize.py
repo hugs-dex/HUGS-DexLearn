@@ -2428,6 +2428,36 @@ def resolve_visualization_path(config: DictConfig, path):
     return os.path.abspath(os.path.join(str(launch_dir), str(path)))
 
 
+def resolve_human_scores_dir(config: DictConfig):
+    """Resolve the Human type-branch sample root used by the pose viewer.
+
+    An explicit ``task.human_scores_dir`` takes precedence. Otherwise the
+    directory is derived from the type branch experiment name and checkpoint.
+    """
+    explicit_dir = get_task_value(config, "human_scores_dir", "")
+    if is_configured_path(explicit_dir):
+        return resolve_visualization_path(config, explicit_dir)
+
+    score_exp_name = get_task_value(config, "human_scores_exp_name", "")
+    score_ckpt = get_task_value(config, "human_scores_ckpt", "")
+    has_exp_name = is_configured_path(score_exp_name)
+    has_ckpt = is_configured_path(score_ckpt)
+    if has_exp_name != has_ckpt:
+        raise ValueError("Set both task.human_scores_exp_name and task.human_scores_ckpt, or neither.")
+    if not has_exp_name:
+        return ""
+
+    ckpt_name = os.path.basename(str(score_ckpt))
+    step_text = os.path.splitext(ckpt_name)[0] if ckpt_name.endswith(".pth") else ckpt_name
+    step_text = step_text.removeprefix("step_")
+    if not step_text.isdigit():
+        raise ValueError(f"task.human_scores_ckpt must be a checkpoint step, got {score_ckpt!r}")
+    step_name = f"step_{int(step_text):06d}"
+    output_folder = resolve_visualization_path(config, str(config.output_folder))
+    run_id = f"{config.data_name}_{config.algo_name}_{score_exp_name}"
+    return os.path.join(output_folder, run_id, "tests", step_name, str(config.test_data.name))
+
+
 def resolve_robot_dataset_path(path: str, object_root: str) -> str:
     """Resolve a dataset-relative path without inferring historical prefixes."""
     if os.path.isabs(path):
@@ -2744,12 +2774,12 @@ def load_human_scores_index(scores_dir):
         return None
     scores_dir = os.path.abspath(os.path.expanduser(str(scores_dir)))
     if not os.path.isdir(os.path.join(scores_dir, "0_any")):
-        raise ValueError(f"task.human_scores_dir must contain a 0_any directory: {scores_dir}")
+        raise ValueError(f"Human score sample directory must contain a 0_any directory: {scores_dir}")
     records = build_visualization_sample_records(
         scores_dir, list_sample_files(os.path.join(scores_dir, "0_any")), load_payload=False,
     )
     if not records:
-        raise ValueError(f"No 0_any score samples found in task.human_scores_dir: {scores_dir}")
+        raise ValueError(f"No 0_any score samples found in Human score sample directory: {scores_dir}")
     return build_human_visualization_index(records, GRASP_TYPES)
 
 
@@ -2757,7 +2787,10 @@ def format_human_scores_panel(info, scores_dir):
     """Format scores for the loaded object, including explicit missing-data states."""
     text = f"**Object:** {format_gui_wrappable_value(info['object_id'])}\n\n"
     if not is_configured_path(scores_dir):
-        return text + "Scores unavailable. Set `task.human_scores_dir` to the type-branch sample directory."
+        return text + (
+            "Scores unavailable. Set `task.human_scores_exp_name` and "
+            "`task.human_scores_ckpt`, or use `task.human_scores_dir`."
+        )
     summary = info["summary"]
     if summary is None:
         return text + "Scores unavailable for this object."
@@ -3110,7 +3143,7 @@ def task_visualize_human(config: DictConfig) -> None:
         ).to(config.device)
 
     output_dir = get_output_dir(config)
-    scores_dir = resolve_visualization_path(config, get_task_value(config, "human_scores_dir", ""))
+    scores_dir = resolve_human_scores_dir(config)
     human_scores_index = load_human_scores_index(scores_dir) if visualizer == "viser" else None
     scores_dir = os.path.abspath(os.path.expanduser(str(scores_dir))) if is_configured_path(scores_dir) else ""
     pc_source = str(getattr(config.test_data, "pc_source", "partial")).lower()

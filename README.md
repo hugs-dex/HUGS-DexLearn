@@ -133,12 +133,14 @@ python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti tes
 # View sampled wrist poses, grouped by object and grasp type.
 python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
   exp_name=<exp_name>_diffusion ckpt=010000 task.visualize_mode=one_object \
-  task.human_scores_dir=$PWD/output/humanMulti_humanMultiHierar_<exp_name>_type/tests/step_000300/humanMulti
+  task.human_scores_exp_name=<exp_name>_type task.human_scores_ckpt=000300
 ```
 
 The pose view shows the selected object's five type-branch scores in the GUI;
 these are object means from up to 20 `0_any` samples, not per-pose scores.
-Without `task.human_scores_dir`, the pose view still works but shows no scores.
+The type-branch sample directory is derived from the experiment name and
+checkpoint. Use `task.human_scores_dir` only when the samples are stored in a
+custom directory.
 The score view labels show the same five scores as an ordered array.
 
 ```bash

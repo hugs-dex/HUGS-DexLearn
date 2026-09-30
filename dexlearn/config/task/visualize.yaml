@@ -10,8 +10,12 @@ one_scene_max_grasps_per_type: 5
 object_id: obj_0_seq_0
 target_grasp_type_id: 1
 
-# Optional type-branch sample root for the Human pose Viser score panel.
-# Point to tests/step_<type_ckpt>/humanMulti, which contains 0_any/.
+# Human type-branch source for the pose Viser score panel. The directory is
+# derived as output/<data>_<algo>_<exp>/tests/step_<ckpt>/<test_data>/.
+human_scores_exp_name:
+human_scores_ckpt:
+
+# Optional explicit override. It takes precedence over the two settings above.
 human_scores_dir:
 
 # Optional robot source point-cloud file. When set, task=visualize indexes
