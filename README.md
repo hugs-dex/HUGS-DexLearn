@@ -55,6 +55,8 @@ export MANO_ROOT=/path/to/licensed-mano-models
 
 The data root should contain `object/` and `OurHumanGraspFormat/`. Robot assets use `robot/shadow_hand/` and `robot/leap_hand/`. Tasks that use MANO require `MANO_RIGHT.pkl` and `MANO_LEFT.pkl` under `MANO_ROOT`.
 
+For local use, keep these exports in an ignored `.env.local` and run `source .env.local` before starting a task. The file is not loaded automatically.
+
 Datasets, checkpoints, MANO models, and mesh archives are not bundled with the code. See [data and checkpoint formats](docs/contracts.md) for the required layout.
 
 ## Usage
@@ -130,11 +132,14 @@ python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti tes
 
 # View sampled wrist poses, grouped by object and grasp type.
 python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-  exp_name=<exp_name>_diffusion ckpt=010000 task.visualize_mode=one_object
+  exp_name=<exp_name>_diffusion ckpt=010000 task.visualize_mode=one_object \
+  task.human_scores_dir=$PWD/output/humanMulti_humanMultiHierar_<exp_name>_type/tests/step_000300/humanMulti
 ```
 
-The independent branches have separate sample directories. The pose view does
-not display type scores; the score view shows object means from `0_any` samples.
+The pose view shows the selected object's five type-branch scores in the GUI;
+these are object means from up to 20 `0_any` samples, not per-pose scores.
+Without `task.human_scores_dir`, the pose view still works but shows no scores.
+The score view labels show the same five scores as an ordered array.
 
 ```bash
 # Evaluate scores. Prepare the scale-anchor JSON below first to include its baseline.

@@ -1857,6 +1857,7 @@ def show_scenes_with_viser(
     caption_aspects=None,
     gui_description: str = "",
     frame_scenes: bool = False,
+    human_scores_dir=None,
 ):
     if not VISER_AVAILABLE:
         raise ImportError(
@@ -1877,6 +1878,10 @@ def show_scenes_with_viser(
     scene_handles = {"value": []}
 
     records_state = {"records": scene_records}
+    update_human_scores = (
+        add_human_scores_gui(server, scene_records, human_scores_dir)
+        if human_scores_dir is not None else None
+    )
 
     def frame_current_scenes(all_records=False):
         records = records_state["records"]
@@ -2020,6 +2025,8 @@ def show_scenes_with_viser(
             print(f"[{log_prefix}] Selection produced no scenes; keeping the current view.")
             return
         records_state["records"] = new_scene_records
+        if update_human_scores is not None:
+            update_human_scores(new_scene_records)
         state["scene_id"] = int(np.clip(state["scene_id"], 0, len(new_scene_records) - 1))
         state["show_full_scene_captions"] = False
         state["caption_aspects"].clear()
@@ -2413,6 +2420,14 @@ def resolve_human_dataset_path(path):
     return resolve_dataset_path(path)
 
 
+def resolve_visualization_path(config: DictConfig, path):
+    """Resolve a visualization input relative to Hydra's launch directory."""
+    if not is_configured_path(path) or os.path.isabs(str(path)):
+        return str(path)
+    launch_dir = OmegaConf.select(config, "hydra.runtime.cwd") or os.getcwd()
+    return os.path.abspath(os.path.join(str(launch_dir), str(path)))
+
+
 def resolve_robot_dataset_path(path: str, object_root: str) -> str:
     """Resolve a dataset-relative path without inferring historical prefixes."""
     if os.path.isabs(path):
@@ -2672,12 +2687,13 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
         or ``None`` when no compatible score sample exists for the object.
     """
     object_id = base_object_id_from_sequence(object_id)
-    cached = human_index["score_summary_cache"].get(object_id)
-    if cached is not None:
-        return cached
+    cache = human_index["score_summary_cache"]
+    if object_id in cache:
+        return cache[object_id]
 
     dedicated_score_records = human_index["score_records_by_object"].get(object_id, [])
     if not dedicated_score_records:
+        cache[object_id] = None
         return None
 
     score_vectors = []
@@ -2686,14 +2702,18 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
     representative_data = None
     records_to_scan = dedicated_score_records[:HUMAN_SCORE_SUMMARY_MAX_RECORDS]
     for record in records_to_scan:
-        load_visualization_record_payload(
-            record,
-            scene_path_resolver=scene_path_resolver,
-            load_scene_cfg=False,
-        )
-        data = record.get("data") or {}
-        scores = get_human_score_vector_from_data(data, human_index["grasp_type_names"])
-        if scores is None:
+        try:
+            load_visualization_record_payload(
+                record,
+                scene_path_resolver=scene_path_resolver,
+                load_scene_cfg=False,
+            )
+            data = record.get("data") or {}
+            scores = get_human_score_vector_from_data(data, human_index["grasp_type_names"])
+        except Exception as exc:
+            print(f"[visualize] Skipping unreadable score sample {record['sample_file']}: {exc}")
+            continue
+        if scores is None or not np.all(np.isfinite(scores)):
             continue
         if representative_record is None:
             representative_record = record
@@ -2702,6 +2722,7 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
         scored_records.append(record)
 
     if not score_vectors:
+        cache[object_id] = None
         return None
 
     mean_scores = np.mean(np.stack(score_vectors, axis=0), axis=0)
@@ -2715,6 +2736,52 @@ def human_object_score_summary(human_index, object_id: str, scene_path_resolver)
     }
     human_index["score_summary_cache"][object_id] = summary
     return summary
+
+
+def load_human_scores_index(scores_dir):
+    """Index an optional type-branch sample root containing ``0_any/``."""
+    if not is_configured_path(scores_dir):
+        return None
+    scores_dir = os.path.abspath(os.path.expanduser(str(scores_dir)))
+    if not os.path.isdir(os.path.join(scores_dir, "0_any")):
+        raise ValueError(f"task.human_scores_dir must contain a 0_any directory: {scores_dir}")
+    records = build_visualization_sample_records(
+        scores_dir, list_sample_files(os.path.join(scores_dir, "0_any")), load_payload=False,
+    )
+    if not records:
+        raise ValueError(f"No 0_any score samples found in task.human_scores_dir: {scores_dir}")
+    return build_human_visualization_index(records, GRASP_TYPES)
+
+
+def format_human_scores_panel(info, scores_dir):
+    """Format scores for the loaded object, including explicit missing-data states."""
+    text = f"**Object:** {format_gui_wrappable_value(info['object_id'])}\n\n"
+    if not is_configured_path(scores_dir):
+        return text + "Scores unavailable. Set `task.human_scores_dir` to the type-branch sample directory."
+    summary = info["summary"]
+    if summary is None:
+        return text + "Scores unavailable for this object."
+    rows = ["| Grasp type | Score |", "| :--- | ---: |"]
+    rows.extend(f"| {name} | {score:.2f} |" for name, score in zip(GRASP_TYPES[1:], summary["scores"]))
+    return text + "\n".join(rows) + f"\n\nType-branch object mean ({summary['sample_count']} samples)"
+
+
+def add_human_scores_gui(server, scene_records, scores_dir):
+    """Return a panel updater driven only by successfully loaded scene records."""
+    with server.gui.add_folder("Grasp Type Scores", expand_by_default=True) as folder:
+        content = server.gui.add_markdown("")
+        with server.gui.add_folder("Source", expand_by_default=False):
+            server.gui.add_markdown(
+                format_gui_wrappable_value(scores_dir) if is_configured_path(scores_dir) else "Not configured."
+            )
+
+    def update(records):
+        info = records[0].get("human_score_info") if records else None
+        folder.visible = info is not None
+        content.content = format_human_scores_panel(info, scores_dir) if info is not None else ""
+
+    update(scene_records)
+    return update
 
 
 def format_score_vector_text(scores: np.ndarray, grasp_type_names) -> str:
@@ -2787,12 +2854,10 @@ def compact_human_label_caption(
     Returns:
         Short multi-field caption string suitable for default 3D labels.
     """
-    del sample_rank, grasp_error
+    del object_id, sample_rank, grasp_error
     mode = normalize_visualize_mode(mode)
     if int(grasp_type_id) == 0 and score_summary is not None:
-        scores = np.asarray(score_summary["scores"]).reshape(-1)
-        top_type = int(np.argmax(scores)) + 1
-        return f"{object_id} n={score_summary['sample_count']} {top_type}:{scores[top_type - 1]:.2f}"
+        return format_score_array_text(score_summary["scores"])
     return GRASP_TYPES[int(grasp_type_id)] if int(grasp_type_id) > 0 else ""
 
 
@@ -2903,6 +2968,7 @@ def sample_human_one_object_records(
 def build_human_selection_controls(
     config, indices_by_split, initial_split, build_scene_records,
     random_object_count=25, per_type_grasps=5,
+    human_scores_index=None,
 ):
     """Build Human selection state independently of MANO and the Viser server."""
     random_object_count = max(1, int(random_object_count))
@@ -2966,6 +3032,14 @@ def build_human_selection_controls(
         if not entries:
             raise ValueError("No readable samples for this selection. The previous view is unchanged.")
         scenes = build_scene_records(entries, mode)
+        if mode == "one_object" and scenes:
+            loaded_object_id = entries[0]["object_id"]
+            scenes[0]["human_score_info"] = {
+                "object_id": loaded_object_id,
+                "summary": human_object_score_summary(
+                    human_scores_index, loaded_object_id, resolve_human_dataset_path,
+                ) if human_scores_index is not None else None,
+            }
         wrapped = next_index >= page_count
         info = f"Loaded {split_name} / {mode}: Page {page + 1}/{page_count}."
         if wrapped:
@@ -3036,6 +3110,9 @@ def task_visualize_human(config: DictConfig) -> None:
         ).to(config.device)
 
     output_dir = get_output_dir(config)
+    scores_dir = resolve_visualization_path(config, get_task_value(config, "human_scores_dir", ""))
+    human_scores_index = load_human_scores_index(scores_dir) if visualizer == "viser" else None
+    scores_dir = os.path.abspath(os.path.expanduser(str(scores_dir))) if is_configured_path(scores_dir) else ""
     pc_source = str(getattr(config.test_data, "pc_source", "partial")).lower()
     if pc_source not in {"partial", "complete"}:
         raise ValueError(f"Unsupported pc_source={pc_source}. Expected one of ['partial', 'complete'].")
@@ -3238,7 +3315,7 @@ def task_visualize_human(config: DictConfig) -> None:
     if visualizer == "viser":
         selection_controls = build_human_selection_controls(
             config, human_indices_by_split, initial_split, build_human_scene_records,
-            random_object_scene_count, one_object_per_type,
+            random_object_scene_count, one_object_per_type, human_scores_index,
         )
         scene_records = selection_controls["load_scene_records"](
             selection_controls["initial_mode"],
@@ -3269,10 +3346,11 @@ def task_visualize_human(config: DictConfig) -> None:
             log_prefix="visualize_human",
             selection_controls=selection_controls,
             gui_description=f"**Human Prior:** {branch} | **Experiment:** {experiment} | **Checkpoint:** {checkpoint}"
-                            "\n\nType scores: dedicated `0_any` samples only. Pose view has no trained type scores.",
+                            "\n\nType scores come from dedicated `0_any` samples.",
             frame_scenes=True,
             label_font_screen_scale=0.6,
             caption_aspects=caption_aspects,
+            human_scores_dir=scores_dir if 0 not in sample_groups else None,
         )
     else:
         initial_mode = normalize_visualize_mode(get_task_value(config, "visualize_mode", "random_objects"))
