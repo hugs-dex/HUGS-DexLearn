@@ -964,6 +964,8 @@ def caption_aspects_for_record(record):
     Returns:
         A dictionary mapping caption aspect ids to display strings.
     """
+    if "caption_aspects" in record:
+        return record["caption_aspects"]
     label_parts, content_parts = split_caption_after_viser_label(record)
     aspects = {}
     if label_parts:
@@ -1012,7 +1014,8 @@ def build_caption_from_aspects(record, selected_aspects):
         string when no selected aspect is available for the record.
     """
     aspects = caption_aspects_for_record(record)
-    parts = [aspects[aspect_id] for aspect_id, _ in CAPTION_ASPECTS if aspect_id in selected_aspects and aspect_id in aspects]
+    order = dict(CAPTION_ASPECTS) | aspects
+    parts = [aspects[key] for key in order if key in selected_aspects and key in aspects]
     return " | ".join(parts)
 
 
@@ -1765,7 +1768,8 @@ def add_caption_gui(
         caption_dropdown = server.gui.add_dropdown("Sample", options=options, initial_value=options[0])
         show_button = server.gui.add_button("Show Full Caption")
         aspect_buttons = {}
-        for aspect_id, aspect_name in CAPTION_ASPECTS:
+        aspect_labels = caption_aspects if isinstance(caption_aspects, dict) else dict(CAPTION_ASPECTS)
+        for aspect_id, aspect_name in aspect_labels.items():
             if caption_aspects is not None and aspect_id not in caption_aspects:
                 continue
             aspect_buttons[aspect_id] = server.gui.add_button(aspect_name)
@@ -1938,7 +1942,7 @@ def show_scenes_with_viser(
             initial_value=state["display_mode"],
         )
         scene_dropdown = server.gui.add_dropdown(
-            "Scene",
+            "Sample",
             options=sample_options_state["options"],
             initial_value=sample_options_state["options"][state["scene_id"]],
         )
@@ -2117,7 +2121,7 @@ def show_scenes_with_viser(
                 **kwargs,
             )
 
-        with server.gui.add_folder("Selection"):
+        with server.gui.add_folder("Selection", order=-10):
             object_label = str(selection_controls.get("object_label", "Object"))
             next_button_label = str(selection_controls.get("next_button_label", "Next Batch"))
             if "split_options" in selection_controls:
@@ -2160,6 +2164,13 @@ def show_scenes_with_viser(
                 if object_info_handle is None or not hasattr(object_info_handle, "content"):
                     return
                 batch_state = selection_controls.get("batch_state", {})
+                if "selection_key" in selection_controls:
+                    current = batch_state.get("current_object")
+                    object_info_handle.content = (
+                        f"Displayed {object_label}: {format_gui_wrappable_value(current)}"
+                        if current else ""
+                    )
+                    return
                 selection_info = str(batch_state.get("selection_info", "") or "")
                 content = (
                     f"Selected {object_label}: "
@@ -2188,7 +2199,7 @@ def show_scenes_with_viser(
                 options = selection_object_options(str(mode_dropdown.value))
                 if current_object not in [str(option) for option in options]:
                     options = tuple(list(options) + [current_object])
-                    set_viser_dropdown_options(object_dropdown, options)
+                set_viser_dropdown_options(object_dropdown, options)
                 try:
                     object_dropdown.value = current_object
                 except Exception as exc:
@@ -2229,17 +2240,27 @@ def show_scenes_with_viser(
                 update_object_info()
 
             def mark_pending_selection():
-                if "mode_options_for_split" not in selection_controls:
+                key_builder = selection_controls.get("selection_key")
+                if key_builder is None and "mode_options_for_split" not in selection_controls:
                     return
                 batch_state = selection_controls["batch_state"]
                 mode = str(mode_dropdown.value)
-                key = (
-                    current_split_name(), mode,
-                    parse_grasp_type_option(grasp_type_dropdown.value) if mode == "random_objects"
-                    else str(object_dropdown.value),
-                )
+                if key_builder is not None:
+                    key = key_builder(mode, str(object_dropdown.value), str(grasp_type_dropdown.value))
+                else:
+                    key = (
+                        current_split_name(), mode,
+                        parse_grasp_type_option(grasp_type_dropdown.value) if mode == "random_objects"
+                        else str(object_dropdown.value),
+                    )
                 pending = key != batch_state.get("key")
-                next_batch_button.disabled = pending or batch_state.get("page_count", 1) <= 1
+                next_batch_button.disabled = pending or bool(
+                    selection_controls.get("disable_next_batch_for_mode", lambda mode: False)(mode)
+                )
+                if extra_action_button is not None:
+                    extra_action_button.disabled = pending or bool(
+                        selection_controls.get("disable_extra_action_for_mode", lambda mode: False)(mode)
+                    )
                 if status_handle is not None:
                     status_handle.content = (
                         "Selection changed. Click Apply Selection; the previous view is still displayed."
@@ -2265,6 +2286,7 @@ def show_scenes_with_viser(
                 sync_current_object_selection()
                 update_scene_records(new_scene_records)
                 refresh_selection_widgets()
+                mark_pending_selection()
 
             @next_batch_button.on_click
             def _on_next_selection_batch(event):
@@ -2285,6 +2307,7 @@ def show_scenes_with_viser(
                 sync_current_object_selection()
                 update_scene_records(new_scene_records)
                 refresh_selection_widgets()
+                mark_pending_selection()
 
             if extra_action_button is not None:
                 @extra_action_button.on_click
@@ -2297,12 +2320,10 @@ def show_scenes_with_viser(
                             status_handle.content = f"{extra_action_label} failed: `{exc}`"
                         print(f"[{log_prefix}] {extra_action_label} failed: {exc}")
                         return
-                    if status_handle is not None and hasattr(status_handle, "content"):
-                        status_handle.content = (
-                            f"Loaded {extra_action_label.lower()} with {len(new_scene_records)} scene(s)."
-                        )
                     sync_current_object_selection()
                     update_scene_records(new_scene_records)
+                    refresh_selection_widgets()
+                    mark_pending_selection()
 
             @mode_dropdown.on_update
             def _on_selection_mode_update(event):

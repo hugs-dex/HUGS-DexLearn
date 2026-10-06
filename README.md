@@ -96,6 +96,21 @@ python -m dexlearn.main task=obj_human_prior_export \
   exp_name=<exp_name>
 ```
 
+View exported priors in Viser (requires MANO models):
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m dexlearn.main task=visualize_human_prior \
+  algo=humanMultiHierar data=humanMulti device=cuda:0 \
+  task.prior_dir=<path_to_exported_prior> task.visualize_mode=one_scene
+```
+
+Set `prior_dir` to the robot-specific directory, e.g.
+`output/humanMulti_humanMultiHierar_<exp_name>/obj_human_prior/step_007500_000100/DGN_2k/shadow_hand`.
+Open `http://localhost:8080`; choose a scene and **Grasp Type**, then click
+**Apply Selection**. Use **Next Batch** for more poses and **Next Scene** to change
+scenes. Switch to `random_objects` with `0_any` to view type scores.
+Hand meshes use fixed, flat fingers to illustrate the exported positions and rotations.
+
 #### Train and Evaluate
 
 Use a different `<exp_name>` from the full-data run: training resumes existing

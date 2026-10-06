@@ -31,6 +31,14 @@ from dexlearn.utils.util import set_seed
 
 
 HUMAN_PRIOR_VISER_MODE_OPTIONS = ("random_objects", "one_scene")
+PRIOR_CAPTION_ASPECTS = {
+    "scene_id": "Scene",
+    "object_id": "Object",
+    "grasp_type": "Grasp Type",
+    "type_score": "Type Score",
+    "sample": "Sample",
+    "position_source": "Position Source",
+}
 REAL_GRASP_TYPE_IDS = tuple(range(1, len(GRASP_TYPES)))
 HUMAN_BOTH_THREE_TYPE_ID = 4
 FINGERTIP_JOINT_INDICES = {
@@ -258,6 +266,8 @@ def scene_options(prior_index: dict, config: DictConfig) -> tuple[str, ...]:
         Tuple of selectable scene ids. This is intentionally bounded so the
         web UI does not need to receive hundreds of thousands of options.
     """
+    if "scene_options" in prior_index:
+        return prior_index["scene_options"]
     preferred_scene_id = get_task_value(config, "scene_id", None)
     option_count = int(get_task_value(config, "scene_option_count", 256))
     options: list[str] = []
@@ -281,7 +291,8 @@ def scene_options(prior_index: dict, config: DictConfig) -> tuple[str, ...]:
     if not options:
         record = random_scene_record(prior_index)
         options.append(record["scene_id"])
-    return tuple(options)
+    prior_index["scene_options"] = tuple(options)
+    return prior_index["scene_options"]
 
 
 def find_scene_record(prior_index: dict, scene_id: str) -> dict:
@@ -668,6 +679,11 @@ def build_score_scene_record(record: dict, scene_data: dict, pc: np.ndarray, con
         "viser_all_label": record["object_id"],
         "source_scene_id": record["scene_id"],
         "source_object_id": record["object_id"],
+        "caption_aspects": {
+            "scene_id": f"scene={record['scene_id']}",
+            "object_id": f"object={record['object_id']}",
+            "type_score": f"scores={label}",
+        },
     }
 
 
@@ -696,7 +712,6 @@ def build_pose_scene_record(
     device: str,
     grasp_type_index: int,
     sample_index: int,
-    visible_samples_per_type: int,
     config: DictConfig,
     show_caption: bool = True,
 ) -> dict:
@@ -757,15 +772,21 @@ def build_pose_scene_record(
     )
     return {
         "elements": scene_elements,
-        "caption": caption if show_caption else "",
+        "caption": caption,
         "label_caption": label if show_caption else "",
         "viser_all_label": f"{GRASP_TYPES[grasp_type_id]} | {sample_index + 1}",
         "source_scene_id": record["scene_id"],
         "source_object_id": record["object_id"],
-        "viser_grid_row": grasp_type_index,
-        "viser_grid_col": sample_index,
-        "viser_grid_rows": len(grasp_type_ids),
-        "viser_grid_cols": int(visible_samples_per_type),
+        "sample_index": sample_index,
+        "sample_count": np.asarray(scene_data[position_key]).shape[1],
+        "caption_aspects": {
+            "scene_id": f"scene={record['scene_id']}",
+            "object_id": f"object={record['object_id']}",
+            "grasp_type": f"type={GRASP_TYPES[grasp_type_id]}",
+            "type_score": f"type_score={score:.4f}",
+            "sample": f"sample={sample_index + 1}",
+            "position_source": f"position={position_key}",
+        },
     }
 
 
@@ -893,15 +914,10 @@ def build_scene_records(
                     str(config.device),
                     type_index,
                     sample_index,
-                    1,
                     config,
                     show_caption=True,
                 )
             )
-            scene_records[-1]["viser_grid_row"] = 0
-            scene_records[-1]["viser_grid_col"] = 0
-            scene_records[-1]["viser_grid_rows"] = 1
-            scene_records[-1]["viser_grid_cols"] = 1
         return scene_records
 
     if mode != "one_scene":
@@ -923,11 +939,10 @@ def build_scene_records(
     if visible_samples_per_type <= 0:
         raise ValueError("task.one_scene_samples_per_type must be positive.")
     show_one_scene_caption = bool(get_task_value(config, "show_one_scene_caption", False))
-    batch_start = (max(0, int(batch_index)) * visible_samples_per_type) % pose_array.shape[1]
-    sample_indices = [
-        (batch_start + offset) % pose_array.shape[1]
-        for offset in range(min(visible_samples_per_type, pose_array.shape[1]))
-    ]
+    page_count = (pose_array.shape[1] + visible_samples_per_type - 1) // visible_samples_per_type
+    page = max(0, int(batch_index)) % page_count
+    batch_start = page * visible_samples_per_type
+    sample_indices = range(batch_start, min(batch_start + visible_samples_per_type, pose_array.shape[1]))
     enabled_pairs = scene_enabled_type_pairs(scene_data, type_ids)
     if int(grasp_type_id) == 0:
         type_pairs = enabled_pairs
@@ -944,7 +959,6 @@ def build_scene_records(
                     str(config.device),
                     int(grasp_type_index_value),
                     sample_index,
-                    len(sample_indices),
                     config,
                     show_caption=show_one_scene_caption,
                 )
@@ -953,8 +967,8 @@ def build_scene_records(
             scene_records[-1]["viser_grid_row"] = 0 if int(grasp_type_id) != 0 else display_row
             scene_records[-1]["viser_grid_rows"] = 1 if int(grasp_type_id) != 0 else len(type_pairs)
             scene_records[-1]["viser_grid_cols"] = len(sample_indices)
-            if scene_records[-1]["caption"]:
-                scene_records[-1]["caption"] = f"{scene_records[-1]['caption']} | batch={batch_index + 1}"
+            scene_records[-1]["page"] = page
+            scene_records[-1]["page_count"] = page_count
     return scene_records
 
 
@@ -990,109 +1004,66 @@ def build_prior_selection_controls(prior_index: dict, config: DictConfig, mano_l
     initial_grasp_type = pick_initial_option(grasp_type_options, preferred_grasp_type_id)
     batch_state = {"key": None, "index": 0}
 
-    def update_one_scene_selection_info(scene_id: str) -> None:
-        """Refresh right-panel per-type score text for one selected scene.
+    def selection_key(mode, object_id, grasp_type_option):
+        # The object dropdown is unused in random-object mode.
+        scene_id = str(object_id) if mode == "one_scene" else None
+        return (mode, scene_id, parse_grasp_type_option(grasp_type_option))
 
-        Args:
-            scene_id: Scene id currently selected in one-scene mode.
-
-        Returns:
-            None. Updates ``batch_state`` in place.
-        """
-        record = find_scene_record(prior_index, str(scene_id))
-        scene_data = load_prior_scene(record["scene_file"])
-        batch_state["selection_info"] = one_scene_score_markdown(scene_data, type_ids)
+    def object_options_for_mode(mode):
+        if normalize_prior_visualize_mode(mode) != "one_scene":
+            return object_options
+        options = scene_options(prior_index, config)
+        current = batch_state.get("current_object")
+        if (batch_state.get("key") or (None,))[0] == "one_scene" and current not in options:
+            options = (current, *options[:-1])
+        return options
 
     def load_scene_records(mode, object_id, grasp_type_option, advance_batch=False, split_name=None):
-        """Load scene records from the current viser selection.
-
-        Args:
-            mode: Selected UI visualization mode.
-            object_id: Selected object id.
-            grasp_type_option: Selected grasp type. ``0_any`` shows score-only
-                records in random-object mode.
-            advance_batch: Whether to advance to the next object page or
-                one-scene pose sample page.
-            split_name: Unused split name kept for the shared control contract.
-
-        Returns:
-            Scene records for the requested selection.
-        """
-        del split_name
-        target_grasp_type_id = parse_grasp_type_option(grasp_type_option) if grasp_type_option else 0
-        if int(target_grasp_type_id) == HUMAN_BOTH_THREE_TYPE_ID and HUMAN_BOTH_THREE_TYPE_ID not in type_ids:
-            target_grasp_type_id = 0
+        """Build a selection, then publish its state only after loading succeeds."""
         mode = normalize_prior_visualize_mode(mode)
-        selection_key = (mode, str(object_id), int(target_grasp_type_id))
-        if selection_key != batch_state["key"]:
-            batch_state["key"] = selection_key
-            batch_state["index"] = 0
-        elif advance_batch:
-            batch_state["index"] += 1
+        key = selection_key(mode, object_id, grasp_type_option)
+        page = batch_state["index"] if key == batch_state["key"] else 0
+        if advance_batch and key == batch_state["key"]:
+            page += 1
+        type_id = key[2]
         mano_layers = None
-        if mode == "one_scene" or int(target_grasp_type_id) != 0:
+        if mode == "one_scene" or type_id != 0:
             if mano_layers_state.get("value") is None:
                 print("[visualize_human_prior] Initializing MANO layers for pose view.")
                 mano_layers_state["value"] = create_mano_layers(str(config.device))
             mano_layers = mano_layers_state["value"]
-        scene_records = build_scene_records(
-            prior_index,
-            mode,
-            str(object_id),
-            batch_state["index"],
-            config,
-            mano_layers=mano_layers,
-            grasp_type_id=int(target_grasp_type_id),
+        records = build_scene_records(
+            prior_index, mode, str(object_id), page, config,
+            mano_layers=mano_layers, grasp_type_id=type_id,
         )
-        if mode == "one_scene" and scene_records:
-            batch_state["current_object"] = str(scene_records[0].get("source_scene_id", object_id))
-            update_one_scene_selection_info(batch_state["current_object"])
-        elif mode == "random_objects":
-            batch_state["current_object"] = str(object_id)
-            batch_state["selection_info"] = ""
-        return scene_records
+        if not records:
+            raise ValueError("No poses for this selection; the previous view is unchanged.")
+        if mode == "one_scene":
+            first = records[0]
+            current = first["source_scene_id"]
+            page, page_count = first["page"], first["page_count"]
+            start = min(record["sample_index"] for record in records) + 1
+            end = max(record["sample_index"] for record in records) + 1
+            payload = load_prior_scene(find_scene_record(prior_index, current)["scene_file"])
+            info = (
+                f"Page {page + 1}/{page_count}; samples {start}–{end}/{first['sample_count']} per type.\n\n"
+                + one_scene_score_markdown(payload, type_ids)
+            )
+        else:
+            current, page_count = None, None
+            info = f"Showing {len(records)} random objects. Next Batch draws a new set."
+        batch_state.update(
+            key=key, index=page, page_count=page_count,
+            current_object=current, selection_info=info,
+        )
+        return records
 
-    def load_action_scene_records(mode, object_id, grasp_type_option, action_name: str, split_name=None):
-        """Load scene records for human-prior-specific Selection actions.
-
-        Args:
-            mode: Selected UI visualization mode.
-            object_id: Selected object id or scene id.
-            grasp_type_option: Selected grasp type option.
-            action_name: Button action label. ``Next Scene`` selects another
-                random scene while keeping the current grasp type.
-            split_name: Unused split name kept for the shared control contract.
-
-        Returns:
-            Scene records for the requested action.
-        """
-        del split_name
-        mode = normalize_prior_visualize_mode(mode)
-        if mode != "one_scene" or str(action_name) != "Next Scene":
+    def load_action_scene_records(mode, object_id, grasp_type_option, action_name, split_name=None):
+        """Choose another scene without changing the selected grasp type."""
+        if normalize_prior_visualize_mode(mode) != "one_scene" or action_name != "Next Scene":
             return load_scene_records(mode, object_id, grasp_type_option, advance_batch=True)
-
-        target_grasp_type_id = parse_grasp_type_option(grasp_type_option) if grasp_type_option else 0
-        if int(target_grasp_type_id) == HUMAN_BOTH_THREE_TYPE_ID and HUMAN_BOTH_THREE_TYPE_ID not in type_ids:
-            target_grasp_type_id = 0
-        random_record = one_scene_record(prior_index, random_next=True)
-        batch_state["key"] = (mode, random_record["scene_id"], int(target_grasp_type_id))
-        batch_state["index"] = 0
-        if mano_layers_state.get("value") is None:
-            print("[visualize_human_prior] Initializing MANO layers for pose view.")
-            mano_layers_state["value"] = create_mano_layers(str(config.device))
-        scene_records = build_scene_records(
-            prior_index,
-            mode,
-            random_record["scene_id"],
-            batch_state["index"],
-            config,
-            mano_layers=mano_layers_state["value"],
-            grasp_type_id=int(target_grasp_type_id),
-        )
-        if scene_records:
-            batch_state["current_object"] = str(scene_records[0].get("source_scene_id", random_record["scene_id"]))
-            update_one_scene_selection_info(batch_state["current_object"])
-        return scene_records
+        record = random_scene_record(prior_index)
+        return load_scene_records("one_scene", record["scene_id"], grasp_type_option)
 
     return {
         "mode_options": HUMAN_PRIOR_VISER_MODE_OPTIONS,
@@ -1104,15 +1075,16 @@ def build_prior_selection_controls(prior_index: dict, config: DictConfig, mano_l
         "initial_grasp_type": initial_grasp_type,
         "load_scene_records": load_scene_records,
         "batch_state": batch_state,
-        "object_options_for_mode": lambda mode: (
-            scene_options(prior_index, config) if normalize_prior_visualize_mode(mode) == "one_scene" else object_options
-        ),
+        "object_options_for_mode": object_options_for_mode,
+        "selection_key": selection_key,
         "object_label": "Scene",
         "next_button_label": "Next Batch",
         "extra_action_button_label": "Next Scene",
         "disable_object_for_mode": lambda mode: normalize_prior_visualize_mode(mode) == "random_objects",
         "disable_grasp_type_for_mode": lambda mode: False,
-        "disable_next_batch_for_mode": lambda mode: False,
+        "disable_next_batch_for_mode": lambda mode: (
+            mode == "one_scene" and batch_state.get("page_count") == 1
+        ),
         "disable_extra_action_for_mode": lambda mode: normalize_prior_visualize_mode(mode) != "one_scene",
         "load_action_scene_records": load_action_scene_records,
     }
@@ -1168,6 +1140,8 @@ def task_visualize_human_prior(config: DictConfig) -> None:
             label_font_size_mode=viser_label_font_size_mode,
             label_font_screen_scale=viser_label_font_screen_scale,
             label_height_offset=viser_label_height_offset,
+            caption_aspects=PRIOR_CAPTION_ASPECTS,
+            frame_scenes=True,
         )
         return
 

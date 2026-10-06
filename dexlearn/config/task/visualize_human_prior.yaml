@@ -30,6 +30,7 @@ viser_scene_id: 0
 viser_label_font_size_mode: screen
 viser_label_font_screen_scale: 0.8
 viser_label_height_offset: 0.35
+# Initial 3D label visibility; full details remain available in Captions.
 show_one_scene_caption: false
 # MANO local frame visibility controls.
 show_mano_wrist_frame: true
