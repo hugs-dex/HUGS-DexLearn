@@ -144,13 +144,13 @@ custom directory.
 The score view labels show the same five scores as an ordered array.
 
 ```bash
-# Evaluate scores. Prepare the scale-anchor JSON below first to include its baseline.
+# Evaluate scores and write an additional report without both_three.
 python -m dexlearn.main task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-  exp_name=<exp_name>_type ckpt=000300
+  exp_name=<exp_name>_type ckpt=000100 task.exclude_both_three=true
 
 # Evaluate generated Human poses against test.json.
 python -m dexlearn.main task=diffusion_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-  exp_name=<exp_name>_diffusion ckpt=010000
+  exp_name=<exp_name>_diffusion ckpt=007500
 ```
 
 Samples are saved under `output/humanMulti_humanMultiHierar_<branch>/tests/step_<ckpt>/`,

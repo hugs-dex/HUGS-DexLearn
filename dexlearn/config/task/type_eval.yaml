@@ -30,8 +30,8 @@ max_score_rows: 0
 
 # Enable sections independently.
 run_human_1a: true
-run_human_scale_anchor_baseline: true
-run_dgn_1b: true
+run_human_scale_anchor_baseline: false
+run_dgn_1b: false
 
 # Also emit a derived 1A report where both-three labels and probabilities are
 # removed before q_t and p_t are renormalized over the remaining four types.

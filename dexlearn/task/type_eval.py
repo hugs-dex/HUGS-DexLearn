@@ -1916,37 +1916,37 @@ def human_report_lines(
     """
     active_type_names = ", ".join(GRASP_TYPES[type_id] for type_id in active_type_ids)
     lines = [
-        "- 本节实现 `Evaluation Metrics 1 / 1A`。label 由本 evaluator 从 human train/test grasp records 重新计算；没有读取或复用 `scene_budget.py` 的 `hierarchy_count` 输出。",
-        f"- Active grasp types: `{active_type_names}`。",
-        "- `q_t=count_t/sum_t count_t` 是 pose-class 内 human observed grasp type 分布，只用于 evaluation；`p_t` 是 Human Prior score 归一化后的 active-type 分布。",
-        f"- Pose-class label rows: {len(label_rows)}；有 score 可评估的 rows: {len(metric_rows)}。",
-        f"- 明细 CSV: `{suffixed_output_path(output_dir, 'evaluation_human_pose_class_labels.csv', output_suffix)}`",
+        "- This section reports Evaluation Metric 1A. Labels are recomputed from Human train/test grasp records; `scene_budget.py` hierarchy counts are not reused.",
+        f"- Active grasp types: `{active_type_names}`.",
+        "- `q_t=count_t/sum_t count_t` is the observed Human grasp-type distribution for each pose class. `p_t` is the normalized Human Prior score.",
+        f"- Pose-class label rows: {len(label_rows)}; rows with scores: {len(metric_rows)}.",
+        f"- Label details CSV: `{suffixed_output_path(output_dir, 'evaluation_human_pose_class_labels.csv', output_suffix)}`",
         f"- per-scene metric CSV: `{suffixed_output_path(output_dir, 'evaluation_human_pose_class_metrics.csv', output_suffix)}`",
         f"- aggregate CSV: `{suffixed_output_path(output_dir, 'evaluation_human_metric_summary.csv', output_suffix)}`",
         "",
-        "### 指标解释",
-        "- `KL(q||p)`：`CE-H(q)`，去掉 label 自身 entropy 后的分布偏差；越低越好。",
-        "- `Soft Precision`：`sum_{t in P(scene)} p_t`，其中 `P(scene)={t | q_t>0}`；衡量预测概率有多少落在 GT positive types 上，越高越好。它等价于此前 report 里的 `PosMass`。",
-        "- `Soft Recall@card(P)`：令 `P={t | q_t>0}`，取 `p_t` 最高的前 `|P|` 个 type，并把这些 type 覆盖到的 GT 概率质量相加，即 `sum_{t in Top-|P|(p)} q_t`；越高越好。",
-        "- `Soft-label CE / NLL`：`-sum_t q_t log(p_t)`，衡量模型给 human observed 分布的 likelihood；越低越好。",
-        "- `Positive-set CE`：只在 `q_t>0` 的 human observed positive types 内重新归一化 `p_t` 后计算 CE，衡量 positive set 内部的概率分配；越低越好，需和 SoftPrecision 一起解读。",
-        "- `CE@eps`：用不同 `eps` 对 `p_t` 做 log 前下限裁剪后计算 CE，用于诊断平均 CE 对 `p_t≈0` 的敏感性；越低越好。",
-        "- `Distribution L1 / TVD`：`sum_t |p_t-q_t|` 和其一半，直观表示概率质量错配量；越低越好。",
-        "- `JS divergence`：对称、有界的分布距离，对 `p_t` 很小的情况比 KL 更稳定；越低越好。",
-        "- `Positive probability mass`：`sum_{t in P(scene)} p_t`，衡量模型把多少概率放到 human observed positive types 上；越高越好。",
-        "- `Positive-set Recall@|P|`：令 `P={t | q_t>0}`，取 `p_t` 最高的前 `|P|` 个 type，统计其中覆盖了多少 GT positive types；越高越好，更接近“数据里出现过的 type 是否都被提出来”。",
-        "- `Per-type signed bias / under / over`：分别统计 `p_t-q_t`、`max(q_t-p_t,0)`、`max(p_t-q_t,0)`，用于发现某一类是否系统性低估或高估。",
-        "- `Rank agreement`：Spearman、Kendall、top-1 match、top-2 overlap，衡量 active types 排序是否接近 `q_t`，对 top-heavy allocator 更敏感。",
+        "### Metric Guide",
+        "- `KL(q||p)`: distribution error after removing label entropy; lower is better.",
+        "- `Soft Precision`: predicted probability assigned to types present in the Human labels; higher is better.",
+        "- `Soft Recall@card(P)`: Human label mass covered by the top `|P|` predicted types; higher is better.",
+        "- `Soft-label CE / NLL`: negative log-likelihood of the observed Human distribution; lower is better.",
+        "- `Positive-set CE`: cross-entropy over only types present in the Human labels, after renormalizing their predicted probabilities; lower is better.",
+        "- `CE@eps`: cross-entropy with a probability floor before taking logs; lower is better. It shows sensitivity to near-zero scores.",
+        "- `Distribution L1 / TVD`: total probability mismatch and half that value; lower is better.",
+        "- `JS divergence`: symmetric, bounded distribution distance; lower is better.",
+        "- `Positive probability mass`: predicted probability assigned to types present in the Human labels; higher is better.",
+        "- `Positive-set Recall@|P|`: fraction of observed Human types included among the top `|P|` predictions; higher is better.",
+        "- `Per-type signed bias / under / over`: per-type prediction error, underestimation, and overestimation.",
+        "- `Rank agreement`: Spearman, Kendall, top-1 match, and top-2 overlap between predicted and observed type rankings.",
         "",
-        "### Train/Test 主汇总",
+        "### Train/Test Summary",
         "| split | avg | N | KL | SoftPrec | SoftRec@card(P) | CE | PosCE | CE@1e-6 | CE@1e-3 | L1 | TVD | JS | PosMass | PosR@card(P) | Spearman | Kendall | Top1 | Top2 |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     if label_summary and label_summary.get("removed_type_name"):
         lines[2:2] = [
-            f"- 移除 grasp type: `{label_summary['removed_type_name']}`；剩余 `q_t` 和 `p_t` 已重新归一化。",
-            f"- 原 pose-class rows: {label_summary['original_pose_class_num']}；保留 rows: {label_summary['kept_pose_class_num']}；丢弃 rows: {label_summary['dropped_pose_class_num']}。",
-            f"- 原 human grasp record_count: {label_summary['original_record_count']}；移除后 record_count: {label_summary['kept_record_count']}；移除 count: {label_summary['removed_record_count']}。",
+            f"- Removed grasp type: `{label_summary['removed_type_name']}`. Remaining `q_t` and `p_t` values were renormalized.",
+            f"- Pose classes: {label_summary['original_pose_class_num']} before filtering, {label_summary['kept_pose_class_num']} kept, {label_summary['dropped_pose_class_num']} dropped.",
+            f"- Human grasp records: {label_summary['original_record_count']} before filtering, {label_summary['kept_record_count']} kept, {label_summary['removed_record_count']} removed.",
         ]
     wanted = [row for row in summary_rows if row["group_name"] in {"scene_micro", "object_macro"} and row["group_value"] in {"train", "test"}]
     for row in wanted:
@@ -1963,7 +1963,7 @@ def human_report_lines(
             f"{format_float(row.get('spearman'))} | {format_float(row.get('kendall'))} | "
             f"{format_float(row.get('top1_match'))} | {format_float(row.get('top2_overlap'))} |"
         )
-    lines.extend(["", "### Per-type Signed Bias（scene-micro）", "| split | type | mean(p-q) | mean under | mean over |", "|---|---:|---:|---:|---:|"])
+    lines.extend(["", "### Per-type Signed Bias (Scene Micro)", "| split | type | mean(p-q) | mean under | mean over |", "|---|---:|---:|---:|---:|"])
     for row in [item for item in summary_rows if item["group_name"] == "scene_micro" and item["group_value"] in {"train", "test"}]:
         for type_id in active_type_ids:
             lines.append(
@@ -1972,7 +1972,7 @@ def human_report_lines(
                 f"{format_float(row.get(f'type_{type_id}_mean_under'))} | "
                 f"{format_float(row.get(f'type_{type_id}_mean_over'))} |"
             )
-    lines.extend(["", "### 分组说明", "- aggregate CSV 额外包含 `|P(scene)|` 分组，以及 `xy_long`、`xy_short`、`z_height` 三个 canonical point-cloud scale descriptor 的分位数 bucket 分组。"])
+    lines.extend(["", "### Grouped Results", "- The aggregate CSV also includes groups by `|P(scene)|` and quantile buckets for canonical point-cloud scale features `xy_long`, `xy_short`, and `z_height`."])
     return lines
 
 
@@ -2185,11 +2185,11 @@ def scale_anchor_baseline_report_lines(
     """
     active_type_names = ", ".join(GRASP_TYPES[type_id] for type_id in active_type_ids)
     lines = [
-        f"- Baseline 来源: `{anchor_path}`",
-        f"- Baseline 统计 scope: `{anchor_scope}`。该 baseline 只使用这个 scope 内的 grasp distribution，默认使用 train 以避免 test label 泄漏。",
-        f"- Active grasp types: `{active_type_names}`。",
-        "- 对每个 test pose-class row，使用该 object 的 AABB 半对角 scale 找最近 anchor，并把该 anchor 的 active-type 分布作为 `p_t`。",
-        f"- anchor 数量: {len(anchors)}；test baseline rows: {len(metric_rows)}。",
+        f"- Baseline source: `{anchor_path}`",
+        f"- Statistics split: `{anchor_scope}`. Only this split is used; the default is `train` to avoid test-label leakage.",
+        f"- Active grasp types: `{active_type_names}`.",
+        "- For each test pose class, the nearest anchor is selected by the object's AABB half-diagonal. Its type distribution is used as `p_t`.",
+        f"- Anchors: {len(anchors)}; test rows: {len(metric_rows)}.",
         f"- baseline prediction CSV: `{suffixed_output_path(output_dir, 'evaluation_human_scale_anchor_baseline_predictions.csv', output_suffix)}`",
         f"- baseline metric CSV: `{suffixed_output_path(output_dir, 'evaluation_human_scale_anchor_baseline_metrics.csv', output_suffix)}`",
         f"- baseline summary CSV: `{suffixed_output_path(output_dir, 'evaluation_human_scale_anchor_baseline_summary.csv', output_suffix)}`",
@@ -2250,7 +2250,7 @@ def run_human_scale_anchor_baseline(
     """
     anchor_path = _abs_path(getattr(config.task, "human_scale_anchor_distribution_json", ""))
     if not anchor_path or not os.path.isfile(anchor_path):
-        return [f"- 跳过 scale-anchor baseline：找不到 anchor JSON `{anchor_path}`。"]
+        return [f"- Skipped the scale-anchor baseline because the anchor JSON was not found: `{anchor_path}`."]
     split = str(getattr(config.task, "human_scale_anchor_baseline_split", "test") or "test")
     anchor_scope = str(getattr(config.task, "human_scale_anchor_distribution_scope", "train") or "train")
     anchors = load_scale_anchor_distributions(anchor_path, scope=anchor_scope)
@@ -2654,20 +2654,20 @@ def dgn_report_lines(
         Markdown lines.
     """
     lines = [
-        "- 本节实现 `Evaluation Metrics 1 / 1B`。DGN 没有 human label，因此只做 score 与 canonical point-cloud 三维尺寸 `(xy_long, xy_short, z_height)` 的关系诊断。",
-        f"- DGN score rows with scale: {len(dgn_rows)}。",
-        f"- 明细 CSV: `{os.path.join(output_dir, 'evaluation_dgn_score_scale_rows.csv')}`",
+        "- This section reports Evaluation Metric 1B. DGN has no Human labels, so it only checks score relationships with canonical point-cloud dimensions `(xy_long, xy_short, z_height)`.",
+        f"- DGN score rows with scale: {len(dgn_rows)}.",
+        f"- Detail CSV: `{os.path.join(output_dir, 'evaluation_dgn_score_scale_rows.csv')}`",
         f"- distribution CSV: `{os.path.join(output_dir, 'evaluation_dgn_score_scale_distribution.csv')}`",
         f"- correlation CSV: `{os.path.join(output_dir, 'evaluation_dgn_score_scale_correlation.csv')}`",
         "",
-        "### 指标解释",
-        "- `Score-vs-3D-scale distribution`：按 `xy_long`、`xy_short`、`z_height` 的分位数 bucket 统计每个 type score 的均值、方差、分位数和 95% CI，用来观察 score 是否随尺寸出现系统性偏移。",
-        "- `Score-scale correlation`：每个 type 分别计算 score 与三个连续尺寸变量的 Pearson / Spearman correlation，用来发现单调尺度偏差。",
-        "- `Per-scale score stability`：同一 canonical object 的多个 DGN scenes 上统计 score 方差和 top-1 flip rate，用来定位 pose / point sampling 导致的不稳定。",
-        "- `Similar-shape-size consistency`：在相近 `(xy_long, xy_short, z_height)` 和 aspect ratio bucket 内比较不同 object 的平均 score 方差，用来发现几何尺寸相近但输出不连续的问题。",
-        "- `Ordinal / rule sanity`：只做粗规则诊断，例如 small-xy、large-flat、tall bucket 上各 type 平均 score 是否明显异常；它不是硬标签。",
-        "- `Score repeatability`：如果同一 scene 有重复 score row，则统计重复预测方差；没有重复 row 时该项不可用。",
-        "- `DGN-vs-Human 3D-scale-conditioned gap`：在相同 3D scale bucket 下比较 DGN 与 human train/test 的 score 均值差，用来观察 human-to-DGN OOD calibration gap。",
+        "### Metric Guide",
+        "- `Score-vs-3D-scale distribution`: score means, variance, quantiles, and 95% confidence intervals across point-cloud size buckets.",
+        "- `Score-scale correlation`: Pearson and Spearman correlations between each type score and the three size features.",
+        "- `Per-scale score stability`: score variance and top-1 flip rate across scenes of the same object.",
+        "- `Similar-shape-size consistency`: score variance across objects with similar dimensions and aspect ratios.",
+        "- `Ordinal / rule sanity`: coarse checks for unusual scores in small, flat, or tall object groups; these are not labels.",
+        "- `Score repeatability`: prediction variance when a scene has repeated score rows; unavailable without repeats.",
+        "- `DGN-vs-Human 3D-scale-conditioned gap`: score differences between DGN and Human splits within matching size buckets.",
         "",
         "### Score-scale Correlation",
         "| scale | type | Pearson | Spearman | N |",
@@ -2680,7 +2680,7 @@ def dgn_report_lines(
         )
     all_row = next((row for row in distribution_rows if row["group_name"] == "all"), None)
     if all_row is not None:
-        lines.extend(["", "### Overall Score Percentiles（仅作 scale 分组诊断的入口）", "| type | mean | std | p05 | p50 | p95 | ci95 |", "|---:|---:|---:|---:|---:|---:|---:|"])
+        lines.extend(["", "### Overall Score Percentiles", "| type | mean | std | p05 | p50 | p95 | ci95 |", "|---:|---:|---:|---:|---:|---:|---:|"])
         for type_id in REAL_TYPE_IDS:
             lines.append(
                 f"| {type_id} | {format_float(all_row.get(f'type_{type_id}_mean'))} | "
@@ -2719,7 +2719,7 @@ def run_dgn_1b(config, dgn_score_rows: list[dict], human_metric_rows: list[dict]
         Markdown lines.
     """
     if not dgn_score_rows:
-        return ["- 未找到 DGN test result score，因此跳过 1B。"]
+        return ["- Skipped section 1B because no DGN test scores were found."]
     bucket_count = int(getattr(config.task, "scale_bucket_count", 4))
     min_bucket_count = int(getattr(config.task, "min_bucket_count", 20))
     dgn_rows = score_rows_with_scale(dgn_score_rows, config.task, output_dir, "dgn")
@@ -2823,7 +2823,7 @@ def task_type_eval(config) -> None:
     report = MarkdownReport(report_path, "Human Prior Intrinsic Evaluation")
 
     report.add_section(
-        "输入",
+        "Inputs",
         [
             f"- human_score_jsonl: `{human_score_jsonl}`",
             f"- human_results_dir: `{human_results_dir}`",
@@ -2834,7 +2834,7 @@ def task_type_eval(config) -> None:
             f"- score_grasp_type: `{score_grasp_type}`",
             f"- exclude_both_three: `{exclude_both_three}`",
             f"- output_dir: `{output_dir}`",
-            "- 本任务只读已保存的 `tests/step_*` sample 结果，不运行 sampling、BimanBODex 或 Bench。",
+            "- Reads saved samples from `tests/step_*`; does not run sampling, BimanBODex, or Bench.",
         ],
     )
 
@@ -2844,16 +2844,16 @@ def task_type_eval(config) -> None:
     if bool(getattr(config.task, "run_human_1a", True)):
         try:
             human_lines, human_metric_rows, human_label_rows, excluded_both_three_result = run_human_1a(config, human_score_rows, output_dir)
-            report.add_section("1A Human Train/Test 有 Label", human_lines)
+            report.add_section("1A Human Train/Test Metrics", human_lines)
         except Exception as exc:
-            report.add_section("1A Human Train/Test 有 Label", [f"- 1A 运行失败：`{type(exc).__name__}: {exc}`"])
+            report.add_section("1A Human Train/Test Metrics", [f"- Section 1A failed: `{type(exc).__name__}: {exc}`"])
             raise
 
     excluded_baseline_lines = []
     if bool(getattr(config.task, "run_human_scale_anchor_baseline", True)):
         try:
             baseline_lines = run_human_scale_anchor_baseline(config, human_label_rows, human_metric_rows, output_dir)
-            report.add_section("1A-Baseline Human Scale Anchor", baseline_lines)
+            report.add_section("1A Baseline: Human Scale Anchor", baseline_lines)
             if excluded_both_three_result is not None:
                 excluded_baseline_lines = run_human_scale_anchor_baseline(
                     config,
@@ -2864,43 +2864,43 @@ def task_type_eval(config) -> None:
                     excluded_both_three_result["output_suffix"],
                 )
         except Exception as exc:
-            report.add_section("1A-Baseline Human Scale Anchor", [f"- baseline 运行失败：`{type(exc).__name__}: {exc}`"])
+            report.add_section("1A Baseline: Human Scale Anchor", [f"- Baseline failed: `{type(exc).__name__}: {exc}`"])
             raise
 
     if bool(getattr(config.task, "run_dgn_1b", True)):
         dgn_lines = run_dgn_1b(config, dgn_score_rows, human_metric_rows, output_dir)
-        report.add_section("1B DGN Testset 无 Label", dgn_lines)
+        report.add_section("1B DGN Diagnostics (No Labels)", dgn_lines)
 
     report.add_section(
-        "结论使用边界",
+        "Interpretation",
         [
-            "- 1A 的 `q_t` 来自 human observed count distribution，不是下游最优 utility。",
-            "- 1B 没有 label，只能诊断 score 与三维 canonical point-cloud 尺寸的关系、稳定性和 human-to-DGN 分布差异。",
-            "- 最终 allocator 是否有效仍需要固定总 budget 下的 BimanBODex + Bench paired downstream evaluation 验证。",
+            "- In 1A, `q_t` is the observed Human grasp distribution, not downstream utility.",
+            "- Section 1B has no labels; it only checks score relationships with 3D point-cloud size, stability, and Human-to-DGN distribution gaps.",
+            "- Allocator quality still requires paired BimanBODex and Bench evaluation at a fixed total budget.",
         ],
     )
     if excluded_both_three_result is not None:
         excluded_report_path = suffixed_output_path(output_dir, "evaluation_report.md", WITHOUT_BOTH_THREE_SUFFIX)
-        excluded_report = MarkdownReport(excluded_report_path, "Human Prior Intrinsic Evaluation（without both_three）")
+        excluded_report = MarkdownReport(excluded_report_path, "Human Prior Evaluation (Without Both-Three)")
         excluded_report.add_section(
-            "输入",
+            "Inputs",
             [
                 f"- source evaluation output_dir: `{output_dir}`",
                 f"- score_grasp_type: `{score_grasp_type}`",
                 f"- exclude_both_three: `{exclude_both_three}`",
                 f"- output_suffix: `{WITHOUT_BOTH_THREE_SUFFIX}`",
-                "- 本报告与主 evaluation 同次生成；只在 1A/baseline 统计口径中移除 `4_both_three`，并对剩余四类的 `q_t` / `p_t` 重新归一化。",
+                "- This report is generated with the main evaluation. It removes `4_both_three` from 1A and baseline metrics, then renormalizes `q_t` and `p_t` over the remaining four types.",
             ],
         )
-        excluded_report.add_section("1A Human Train/Test 有 Label", excluded_both_three_result["lines"])
+        excluded_report.add_section("1A Human Train/Test Metrics", excluded_both_three_result["lines"])
         if excluded_baseline_lines:
-            excluded_report.add_section("1A-Baseline Human Scale Anchor", excluded_baseline_lines)
+            excluded_report.add_section("1A Baseline: Human Scale Anchor", excluded_baseline_lines)
         excluded_report.add_section(
-            "结论使用边界",
+            "Interpretation",
             [
-                "- 本报告回答的是排除 `4_both_three` 后，Human Prior 在剩余四类上的分布匹配表现。",
-                "- 它不重新训练模型，也不重新运行 sampling、BimanBODex 或 Bench。",
-                "- 移除 type 后的 `p_t` 会重新归一化，因此数值不能和原五类固定总预算口径直接混用。",
+                "- This report measures how well the Human Prior matches the remaining four types after removing `4_both_three`.",
+                "- It does not retrain the model or rerun sampling, BimanBODex, or Bench.",
+                "- Because `p_t` is renormalized after removing a type, these metrics are not directly comparable to the five-type fixed-budget results.",
             ],
         )
         print(f"[type_eval] Wrote without-both-three report to {excluded_report_path}")
