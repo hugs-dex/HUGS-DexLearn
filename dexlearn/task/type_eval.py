@@ -1027,7 +1027,7 @@ def human_split_lookup(config) -> dict[str, str]:
                 for object_id in _load_json(split_json):
                     lookup.setdefault(canonical_object_id(object_id), split)
     except Exception as exc:
-        print(f"[evaluate] Could not build human split lookup: {type(exc).__name__}: {exc}")
+        print(f"[type_eval] Could not build human split lookup: {type(exc).__name__}: {exc}")
     return lookup
 
 
@@ -1090,7 +1090,7 @@ def load_test_result_scores(
             key = (split, key_text)
             score = normalize_score_vector(sample["pred_grasp_type_prob"])
         except Exception as exc:
-            print(f"[evaluate] Skip unreadable result {sample_path}: {type(exc).__name__}: {exc}")
+            print(f"[type_eval] Skip unreadable result {sample_path}: {type(exc).__name__}: {exc}")
             continue
 
         groups.setdefault(key, []).append({"scores": score})
@@ -1432,7 +1432,7 @@ def build_human_scene_table(config) -> list[dict]:
         for split in splits:
             split_json = os.path.join(object_root, split_path, f"{split}.json")
             if not os.path.isfile(split_json):
-                print(f"[evaluate] Skip missing split file: {split_json}")
+                print(f"[type_eval] Skip missing split file: {split_json}")
                 continue
             for object_id_raw in sorted(_load_json(split_json), key=_natural_sort_key):
                 object_id = canonical_object_id(object_id_raw)
@@ -2321,7 +2321,7 @@ def score_rows_with_scale(score_rows: list[dict], task_cfg, output_dir: str, pre
         out["top1_type"] = int(np.argmax(row["scores"]) + 1)
         rows.append(out)
         if idx > 0 and idx % 50000 == 0:
-            print(f"[evaluate] computed scale descriptors for {idx} score rows")
+            print(f"[type_eval] computed scale descriptors for {idx} score rows")
     if skipped:
         _write_csv(skipped, os.path.join(output_dir, f"{prefix}_skipped_scale_rows.csv"))
     return rows
@@ -2764,7 +2764,7 @@ def output_dir_from_paths(config, primary_input_path: str) -> str:
     return _abs_path(os.path.join(str(config.output_folder), str(config.wandb.id), "evaluation"))
 
 
-def task_evaluate(config) -> None:
+def task_type_eval(config) -> None:
     """Hydra entry point for Human Prior intrinsic evaluation 1A/1B.
 
     Args:
@@ -2903,5 +2903,5 @@ def task_evaluate(config) -> None:
                 "- 移除 type 后的 `p_t` 会重新归一化，因此数值不能和原五类固定总预算口径直接混用。",
             ],
         )
-        print(f"[evaluate] Wrote without-both-three report to {excluded_report_path}")
-    print(f"[evaluate] Wrote report to {report_path}")
+        print(f"[type_eval] Wrote without-both-three report to {excluded_report_path}")
+    print(f"[type_eval] Wrote report to {report_path}")

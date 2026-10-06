@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Launch sample jobs needed by ``task=evaluate`` across GPUs.
+"""Launch sample jobs needed by ``task=type_eval`` across GPUs.
 
 This script intentionally only generates saved samples consumed by
-``dexlearn/main.py task=evaluate``. It launches two evaluation products:
+``dexlearn/main.py task=type_eval``. It launches two evaluation products:
 ``score`` samples from ``0_any`` and fixed-type ``pose`` samples from real
 grasp types. DGN jobs can be restricted to a deterministic random subset so
 quick evaluation does not require sampling the full DGN split.

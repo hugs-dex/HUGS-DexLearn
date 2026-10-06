@@ -12,7 +12,7 @@ from scipy.spatial.transform import Rotation as SciR
 from tqdm import tqdm
 
 from dexlearn.dataset.grasp_types import GRASP_TYPES
-from dexlearn.task.evaluate import (
+from dexlearn.task.type_eval import (
     EPS,
     MarkdownReport,
     _abs_path,

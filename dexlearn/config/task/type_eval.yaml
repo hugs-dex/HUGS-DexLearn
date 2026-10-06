@@ -5,7 +5,7 @@
 # <output_folder>/<wandb.id>/tests/<ckpt_step>/humanMulti/0_any/**/*.npy
 # <output_folder>/<wandb.id>/tests/<ckpt_step>/DGNMulti/0_any/**/*.npy
 
-name: evaluate
+name: type_eval
 
 # Optional explicit saved-sample inputs. Leave empty to derive them from
 # output_folder / wandb.id / ckpt. The default score source is the 0_any folder
@@ -38,7 +38,7 @@ run_dgn_1b: true
 exclude_both_three: false
 
 # Human label recomputation. These thresholds mirror the pose-class notion used
-# by scene_budget.py, but evaluate.py recomputes labels independently.
+# by scene_budget.py, but type_eval.py recomputes labels independently.
 human_splits: [train, test]
 pose_class_rotation_threshold_deg: 45.0
 pose_class_bbox_proportion_threshold: 0.2

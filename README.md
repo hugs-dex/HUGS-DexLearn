@@ -101,7 +101,7 @@ python -m dexlearn.main task=obj_human_prior_export \
 Use a different `<exp_name>` from the full-data run: training resumes existing
 checkpoints by default. Train on the default `train` split, then sample `0_any`
 scores and poses for all five grasp types on `all` human objects.
-`evaluate` reports Human train/test score metrics and DGN score diagnostics
+`type_eval` reports Human train/test score metrics and DGN score diagnostics
 (DGN has no human labels). `diffusion_eval` measures pose recall and surface
 distance on the Human `test` split. Both tasks read saved samples.
 
@@ -145,7 +145,7 @@ The score view labels show the same five scores as an ordered array.
 
 ```bash
 # Evaluate scores. Prepare the scale-anchor JSON below first to include its baseline.
-python -m dexlearn.main task=evaluate algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+python -m dexlearn.main task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
   exp_name=<exp_name>_type ckpt=000300
 
 # Evaluate generated Human poses against test.json.
@@ -161,11 +161,11 @@ For Human-only score evaluation, omit DGN sampling and set `task.run_dgn_1b=fals
 
 The human scale-anchor baseline uses object-scale and grasp-type statistics
 from `task=stat` in the separate HumanGraspData preprocessing repository.
-Before running `evaluate`, generate the JSON from the same formatted human
+Before running `type_eval`, generate the JSON from the same formatted human
 data and `object/valid_split/train.json`. The JSON contains both `all` and
 `train` scopes; the baseline uses `train` statistics to predict distributions
 from the nearest object-scale anchor on `test` objects. After setting up
-HumanGraspData, write the JSON to the location expected by `evaluate`:
+HumanGraspData, write the JSON to the location expected by `type_eval`:
 
 ```bash
 # Run from the HumanGraspData repository root.
@@ -174,7 +174,7 @@ python src/main.py task=stat exp_name=scale_anchor task.data_name=Ours \
   task.object_scale_type_distribution_path="${HUGS_DATASET_ROOT}/metadata/Ours_object_scale_type_distribution.json"
 ```
 
-`evaluate` writes `evaluation_human_scale_anchor_baseline_{predictions,metrics,summary}.csv`
+`type_eval` writes `evaluation_human_scale_anchor_baseline_{predictions,metrics,summary}.csv`
 in the type branch's `evaluation/` directory. For an existing JSON elsewhere,
 set `task.human_scale_anchor_distribution_json=/path/to/statistics.json`.
 If the JSON is absent, this baseline is skipped; to omit it intentionally, set

@@ -4,7 +4,7 @@ from importlib import import_module
 
 TASK_NAMES = (
     "train", "human_preprocess", "sample", "human_prior_format", "visualize",
-    "evaluate", "diffusion_eval", "scene_budget", "obj_human_prior_export",
+    "type_eval", "diffusion_eval", "scene_budget", "obj_human_prior_export",
     "visualize_human_prior", "robot_type_eval",
 )
 __all__ = [f"task_{name}" for name in TASK_NAMES]

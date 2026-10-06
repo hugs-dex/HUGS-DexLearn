@@ -488,11 +488,11 @@ Evaluate an already sampled human model run. Run `task=sample` first; this task
 does not generate samples.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=evaluate algo=humanMultiHierar data=humanMulti test_data=humanMulti wandb.mode=disabled exp_name=<EXP_NAME> ckpt=<CKPT>
+CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti wandb.mode=disabled exp_name=<EXP_NAME> ckpt=<CKPT>
 
 # Example:
 python dexlearn/main.py \
-    task=evaluate algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+    task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
     exp_name=debug26 ckpt=010000 wandb.mode=disabled
 ```
 
