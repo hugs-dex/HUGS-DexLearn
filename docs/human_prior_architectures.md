@@ -14,10 +14,10 @@ orientation. `0_any` is a sampling placeholder, not a sixth contact mode.
 
 | Option | Algorithm config | Modeling and checkpoints |
 | --- | --- | --- |
-| Main hierarchical prior, Independent training | `humanMultiHierar` | `p(c|o) p(T|c,o)`; separately trained score and conditional-pose branches, saved as `<exp>_type` and `<exp>_diffusion`. |
-| Strict Independent baseline | `humanMultiIndependent` | `p(c|o) p(T|o)`; object-only mode and pose marginals, saved as `<exp>_mode_marginal` and `<exp>_pose_marginal`. |
-| Joint baseline | `humanMultiJoint` | `p(c,T|o)`; coupled categorical contact-mode and Gaussian pose diffusion in one checkpoint under `<exp>`. |
-| Reverse baseline | `humanMultiReverse` | `p(T|o) p(c|T,o)`; pose marginal and pose-conditioned mode posterior, saved as `<exp>_pose_marginal` and `<exp>_type_posterior`. |
+| Main hierarchical prior, Independent training | `humanMultiHierar` | `p(c\|o) p(T\|c,o)`; separately trained score and conditional-pose branches, saved as `<exp>_type` and `<exp>_diffusion`. |
+| Strict Independent baseline | `humanMultiIndependent` | `p(c\|o) p(T\|o)`; object-only mode and pose marginals, saved as `<exp>_mode_marginal` and `<exp>_pose_marginal`. |
+| Joint baseline | `humanMultiJoint` | `p(c,T\|o)`; coupled categorical contact-mode and Gaussian pose diffusion in one checkpoint under `<exp>`. |
+| Reverse baseline | `humanMultiReverse` | `p(T\|o) p(c\|T,o)`; pose marginal and pose-conditioned mode posterior, saved as `<exp>_pose_marginal` and `<exp>_type_posterior`. |
 
 In the main workflow, **Independent refers to branch training**: pose generation
 still conditions on the requested contact mode. In `humanMultiIndependent`,
