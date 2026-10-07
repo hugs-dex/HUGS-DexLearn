@@ -25,7 +25,7 @@ uv pip install --python .venv/bin/python -e '.[build]'
 uv pip install --python .venv/bin/python -e '.[runtime,cuda,visualize,contract]'
 ```
 
-The first installation compiles PyTorch3D and MinkowskiEngine. Keep `.venv` activated during installation. See the [installation guide](docs/installation.md) for the tested stack, optional dependencies, and troubleshooting.
+The installation compiles PyTorch3D and MinkowskiEngine. Keep `.venv` activated during installation. See the [installation guide](docs/installation.md) for the tested stack, optional dependencies, and troubleshooting.
 
 Check that the configuration resolves without running a task:
 
