@@ -25,7 +25,10 @@ def test_algorithms_without_training_mode_use_single_stage(path, monkeypatch):
     runner.assert_called_once_with(cfg)
 
 
-@pytest.mark.parametrize("mode", ["legacy_shared_encoder_two_stage", "two_stage_diffusion_then_frozen_type_head"])
+@pytest.mark.parametrize("mode", [
+    "legacy_shared_encoder_two_stage", "two_stage_diffusion_then_frozen_type_head",
+    "independent_marginals_from_scratch",
+])
 def test_removed_training_modes_fail_before_training(mode, monkeypatch):
     runner = Mock()
     monkeypatch.setattr(train, "_task_train_single", runner)

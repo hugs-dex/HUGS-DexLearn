@@ -8,7 +8,7 @@
 | 所有 task 的 Hydra CLI、全部 algo/data/test_data/task YAML 及合法配对 | 通过；旧 humanMultiDiffusion 的两个未使用插值已移除 |
 | 配置根目录优先级、缺失数据/MANO/checkpoint 诊断 | 通过 |
 | 多 worker 唯一分配、真实失败子进程、shell 返回码、dry-run 无日志写入 | 通过 |
-| 原有 Independent/Joint/Reverse 模型与导出、selection metadata、scene whitelist | CPU 测试通过 |
+| 主 Human Prior、Joint/Reverse 模型与导出、selection metadata、scene whitelist | CPU 测试通过 |
 | 五类 export shape、wxyz、非有限数、checkpoint hash 和 manifest | CPU 测试通过 |
 | 11 个 task 模块导入 | 通过；无需导入 MANO 或 MinkowskiEngine |
 | 独立 HUGS-BODex reader | 合成 prior 从 exporter 保存，再由真实 consumer 读取并验证，通过 |

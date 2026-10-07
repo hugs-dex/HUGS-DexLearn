@@ -52,6 +52,27 @@ class FakeMarginalHead(torch.nn.Module):
         return canonical_t24, robot_pose, log_prob
 
 
+class FakeSeededPoseHead(torch.nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.tensor(1.0))
+        self.policy = type("Policy", (), {"channels": 24})()
+
+    def forward(self, data, cond_feat):
+        return {"loss_diffusion": cond_feat.square().mean() * self.scale}
+
+    def sample_with_t24(self, cond_feat, sample_num, initial_noise=None):
+        if initial_noise is None:
+            initial_noise = torch.zeros(cond_feat.shape[0] * sample_num, 24, device=cond_feat.device)
+        canonical_t24 = canonicalize_bimanual_t24(initial_noise)
+        canonical_t24 = canonical_t24.reshape(cond_feat.shape[0], sample_num, 24)
+        return (
+            canonical_t24,
+            bimanual_t24_to_pose(canonical_t24),
+            initial_noise.reshape(cond_feat.shape[0], sample_num, 24).mean(dim=-1),
+        )
+
+
 class FixedDiffusion(torch.nn.Module):
     def __init__(self, samples, log_prob):
         super().__init__()
@@ -95,6 +116,7 @@ class ReverseModelTest(unittest.TestCase):
         self.class_patches = (
             mock.patch.object(reverse_module, "FakeBackbone", FakeBackbone, create=True),
             mock.patch.object(reverse_module, "FakeMarginalHead", FakeMarginalHead, create=True),
+            mock.patch.object(reverse_module, "FakeSeededPoseHead", FakeSeededPoseHead, create=True),
         )
         for class_patch in self.class_patches:
             class_patch.start()
@@ -172,6 +194,27 @@ class ReverseModelTest(unittest.TestCase):
         self.assertTrue(torch.equal(score_a, score_b))
         model(data_a)
         self.assertEqual(tuple(model.output_head.last_forward_condition.shape), (6, 4))
+
+    def test_pose_marginal_seed_is_independent_of_mode_placeholder(self):
+        torch.manual_seed(5)
+        cfg = _marginal_config()
+        cfg.head.name = "FakeSeededPoseHead"
+        model = reverse_module.MarginalPoseDiffusionModel(cfg)
+        object_feature = torch.randn(2, 4)
+        data_a = {"object_feature": object_feature, "grasp_type_id": torch.tensor([1, 5])}
+        data_b = {"object_feature": object_feature, "grasp_type_id": torch.tensor([4, 2])}
+
+        rng_state = torch.random.get_rng_state()
+        first = model.sample_with_t24(data_a, sample_num=6, seed=[101, 202])
+        second = model.sample_with_t24(data_b, sample_num=6, seed=[101, 202])
+        changed_seed = model.sample_with_t24(data_a, sample_num=6, seed=[303, 404])
+
+        self.assertTrue(torch.equal(rng_state, torch.random.get_rng_state()))
+        for first_value, second_value in zip(first, second):
+            self.assertTrue(torch.equal(first_value, second_value))
+        self.assertFalse(torch.equal(first[0], changed_seed[0]))
+        self.assertEqual(tuple(first[0].shape), (2, 6, 24))
+        self.assertEqual(tuple(first[1].shape), (2, 6, 1, 14))
 
     def test_posterior_is_categorical_pose_conditioned_and_checkpointed(self):
         torch.manual_seed(5)

@@ -15,19 +15,15 @@ orientation. `0_any` is a sampling placeholder, not a sixth contact mode.
 | Option | Algorithm config | Modeling and checkpoints |
 | --- | --- | --- |
 | Main hierarchical prior, Independent training | `humanMultiHierar` | `p(c\|o) p(T\|c,o)`; separately trained score and conditional-pose branches, saved as `<exp>_type` and `<exp>_diffusion`. |
-| Strict Independent baseline | `humanMultiIndependent` | `p(c\|o) p(T\|o)`; object-only mode and pose marginals, saved as `<exp>_mode_marginal` and `<exp>_pose_marginal`. |
 | Joint baseline | `humanMultiJoint` | `p(c,T\|o)`; coupled categorical contact-mode and Gaussian pose diffusion in one checkpoint under `<exp>`. |
 | Reverse baseline | `humanMultiReverse` | `p(T\|o) p(c\|T,o)`; pose marginal and pose-conditioned mode posterior, saved as `<exp>_pose_marginal` and `<exp>_type_posterior`. |
 
-In the main workflow, **Independent refers to branch training**: pose generation
-still conditions on the requested contact mode. In `humanMultiIndependent`,
-the mode and pose are also statistically independent given the object; its
-pose generator receives no contact-mode input. These configurations and their
-checkpoints are not interchangeable.
+In the main workflow, **Independent refers to branch training**: the score and
+pose branches have separate parameters, while pose generation conditions on
+the requested contact mode.
 
-The main model is `HierarchicalTypeObjectiveModel`. Strict Independent uses
-`ObjectModeMarginalModel` and `MarginalPoseDiffusionModel`; Reverse replaces
-the object-only mode predictor with `PoseConditionedTypeModel`. Joint uses
+The main model is `HierarchicalTypeObjectiveModel`. Reverse uses
+`MarginalPoseDiffusionModel` and `PoseConditionedTypeModel`. Joint uses
 `JointHybridDiffusionModel` with `JointCategoricalPoseDiffusion`. The current
 configs use `WrappedMinkUNet` object encoders.
 
@@ -51,19 +47,6 @@ encoder and checkpoint. Use `algo.training.independent.run=type` or
 `algo.training.independent.run=diffusion` to train just one branch; the default
 is `both`. Branch schedules live under `algo.training.independent.type.*` and
 `algo.training.independent.diffusion.*`.
-
-### Strict Independent baseline
-
-```bash
-python -m dexlearn.main task=train algo=humanMultiIndependent data=humanMulti \
-  exp_name=prior_independent
-```
-
-The mode marginal trains for 300 iterations, then the pose marginal for 10,000.
-Use `algo.training.run=mode_marginal` or `algo.training.run=pose_marginal` to
-select one branch. Branch schedules are under `algo.training.<branch>.*`.
-The training route enforces record-uniform sampling without type balancing;
-the mode branch uses pose-group soft labels, while the pose branch does not.
 
 ### Joint baseline
 
@@ -127,12 +110,6 @@ python -m dexlearn.main task=obj_human_prior_export \
   task.score_exp_name=prior_main_type task.score_ckpt=000300 \
   task.pose_exp_name=prior_main_diffusion task.pose_ckpt=010000
 
-# Strict Independent: object-only marginals.
-python -m dexlearn.main task=obj_human_prior_export \
-  algo=humanMultiIndependent data=humanMulti test_data=DGNMulti exp_name=prior_independent \
-  task.score_exp_name=prior_independent_mode_marginal task.score_ckpt=000300 \
-  task.pose_exp_name=prior_independent_pose_marginal task.pose_ckpt=010000
-
 # Joint: a single coupled checkpoint.
 python -m dexlearn.main task=obj_human_prior_export \
   algo=humanMultiJoint data=humanMulti test_data=DGNMulti \
@@ -149,16 +126,15 @@ Exports default to `task.robot_name=shadow_hand` and `task.robot_size=1.0`.
 Override both for the target robot. The robot size rescales the input point
 cloud for inference and maps output translations back to physical scene units.
 
-The main prior generates poses conditioned on each mode. Strict Independent
-samples separate mode and pose pools; its export adapter selects poses without
-using mode scores. Reverse weights a shared pose pool with the posterior to
-obtain candidates for each mode. Joint groups a coupled sample pool by its
+The main prior generates poses conditioned on each mode. Reverse weights a
+shared pose pool with the posterior to obtain candidates for each mode.
+Joint groups a coupled sample pool by its
 generated contact modes and estimates budget scores from mode frequencies.
 Joint modes with no sampled support receive zero budget scores; downstream
 synthesis should keep `human_prior.min_type_budget=0`.
 
-Generic `task=sample` defaults to the pose marginal for Strict Independent and
-Reverse. Use `task=obj_human_prior_export` to combine their two checkpoints.
+For Reverse, generic `task=sample` defaults to the pose marginal. Use
+`task=obj_human_prior_export` to combine its pose and posterior checkpoints.
 For the main prior's separate score/pose sampling and evaluation commands,
 see the [README](../README.md#train-and-evaluate). Export layout and detailed
 selection behavior are documented in [workflows](workflows.md#object-human-prior-train-and-export)

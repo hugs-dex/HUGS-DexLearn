@@ -7,6 +7,7 @@ import sys
 
 from hydra import compose, initialize_config_dir
 from hydra.core.hydra_config import HydraConfig
+from hydra.errors import MissingConfigException
 from omegaconf import OmegaConf
 import pytest
 
@@ -51,6 +52,11 @@ def test_every_retained_config_resolves(config_file):
 def test_human_baselines_have_config_contract(algo):
     cfg = resolve([f"data={ALGO_DATA.get(algo, 'humanMulti')}", f"algo={algo}", "task=train"])
     assert "model" in cfg["algo"]
+
+
+def test_removed_baseline_config_is_rejected():
+    with pytest.raises(MissingConfigException, match="humanMultiIndependent"):
+        resolve(["algo=humanMultiIndependent"])
 
 
 @pytest.mark.parametrize("hand", ["shadowMulti", "leapspMulti", "leapMulti"])

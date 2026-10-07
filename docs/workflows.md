@@ -10,7 +10,7 @@
 | nflow、diffusion | bodex_shadow 或相应旧机器人数据配置 |
 | humanNflow、humanDiffusion | human |
 | humanBiDiffusion | humanbi |
-| humanMultiDiffusion、humanMultiHierar、humanMultiIndependent、humanMultiJoint、humanMultiReverse | humanMulti |
+| humanMultiDiffusion、humanMultiHierar、humanMultiJoint、humanMultiReverse | humanMulti |
 | robotMultiHierar | shadowMulti、leapspMulti、leapMulti |
 
 旧单手/双手数据配置不能随意与新 humanMulti 模型混搭。
@@ -99,8 +99,7 @@ CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualize_mod
 ## Human Workflow
 
 See [Human Prior Architectures](human_prior_architectures.md) for the model
-options, the distinction between Independent training and independent
-marginals, and architecture-specific training and export commands.
+options and architecture-specific training and export commands.
 
 ### Preprocess
 
@@ -190,36 +189,6 @@ on clean GT centered canonical `T24`, while inference consumes generated
 centered canonical `T24` from the marginal diffusion; this GT-to-generated pose
 shift is the intentional initial train-inference gap. The marginal generator
 does not accept a contact-mode id or mode-specific sampling path.
-
-### Strict Independent Contact-Mode / Wrist-Pose Human Prior
-
-`humanMultiIndependent` implements the diagnostic product baseline
-`p(c,T|o) = p(c|o) p(T|o)` with two separately initialized and checkpointed
-object-only networks. `<EXP_NAME>_mode_marginal` trains a five-class
-`ObjectModeMarginalModel` for 300 iterations, while
-`<EXP_NAME>_pose_marginal` trains the existing object-only T24 diffusion for
-10,000 iterations. The branches do not share parameters, optimizers,
-normalization state, pose/type inputs, or sampling randomness.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiIndependent data=humanMulti \
-  data.sampling.train_split=all \
-  exp_name=<EXP_NAME>
-
-# Optional: launch only one marginal branch.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiIndependent data=humanMulti \
-  data.sampling.train_split=all \
-  algo.training.run=mode_marginal \
-  exp_name=<EXP_NAME>
-
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiIndependent data=humanMulti \
-  data.sampling.train_split=all \
-  algo.training.run=pose_marginal \
-  exp_name=<EXP_NAME>
-```
 
 ### Joint Contact-Mode / Wrist-Pose Human Prior
 
@@ -325,43 +294,6 @@ override is not used. Per-scene files are stored under a subdirectory named
 after `test_data.object_path`'s final component and `task.robot_name`,
 preserving the original scene id hierarchy, for example
 `.../step_<POSE_CKPT>_<SCORE_CKPT>/DGN_5k/leap_hand/<object>/<env>/<scene>.npy`.
-
-For strict Independent export, use the two marginal checkpoints with
-`algo=humanMultiIndependent`:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=obj_human_prior_export \
-  data=humanMulti \
-  data.hand_pos_source=index_mcp \
-  algo=humanMultiIndependent \
-  test_data=DGNMulti \
-  test_data.test_split=all \
-  algo.batch_size=1024 \
-  task.skip_existing=false \
-  task.robot_name=leap \
-  task.robot_size=1.8 \
-  task.score_ckpt=000300 \
-  task.pose_ckpt=010000 \
-  task.score_exp_name=<EXP_NAME>_mode_marginal \
-  task.pose_exp_name=<EXP_NAME>_pose_marginal \
-  exp_name=<EXP_NAME> \
-  wandb.mode=disabled
-```
-
-Its default export root is
-`output/humanMulti_humanMultiIndependent_<EXP_NAME>/obj_human_prior/step_<POSE_CKPT>_<MODE_CKPT>/`.
-
-Independent export categorically samples 500 modes and independently samples
-500 object-only T24 poses with separate per-scene RNG streams. A third stream
-records the raw mode-pose pairing. The BimanBODex adapter uses a fourth stream
-to permute only the pose marginal into five unlabeled 100-pose blocks, applies
-the same pose-only `prob_pose` selection from 100 to 20 in every block, and
-assigns external mode rows only afterward. Mode probabilities, sampled modes,
-compatibility diagnostics, and active-hand consistency never participate in
-pose selection. The compact record keeps the existing consumer schema; the
-unfiltered marginal samples and pairing provenance are stored under
-`raw_independent/<scene>.npz` with checkpoint and artifact SHA-256 values.
 
 For Reverse export, use the two Reverse checkpoints with
 `algo=humanMultiReverse`:

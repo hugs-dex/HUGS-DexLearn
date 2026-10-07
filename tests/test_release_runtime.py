@@ -75,6 +75,20 @@ def test_valid_export_and_checkpoint_manifest(tmp_path):
     assert manifest["seed"] == 7
 
 
+@pytest.mark.parametrize("factorization", ["independent_C_T", "joint_C_T", "reverse_T_to_C"])
+def test_other_factorization_exports_are_not_reused_as_main_prior(tmp_path, factorization):
+    cfg, record = export_fixture(tmp_path)
+    record["factorization"] = factorization
+    with pytest.raises(ValueError, match="Existing export uses factorization"):
+        validate_scene_export_completeness(record, cfg)
+
+
+def test_main_prior_without_factorization_tag_remains_readable(tmp_path):
+    cfg, record = export_fixture(tmp_path)
+    record.pop("factorization")
+    validate_scene_export_completeness(record, cfg)
+
+
 @pytest.mark.parametrize("mutation,match", [
     ("shape", "shape"), ("nan", "Non-finite"), ("quat", "Quaternion norm"),
     ("type", "grasp_type_ids"), ("mask", "boolean"),

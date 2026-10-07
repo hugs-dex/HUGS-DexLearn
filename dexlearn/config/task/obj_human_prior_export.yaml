@@ -6,8 +6,8 @@ object_splits:
   - all
 
 # One score pass predicts the 5 real grasp-type budget scores for each scene.
-# Joint and strict Independent export use this pass only to enumerate scenes;
-# the placeholder type is not consumed by their sampling models.
+# Joint export uses this pass only to enumerate scenes;
+# the placeholder type is not consumed by its sampling model.
 score_grasp_types:
   - 0_any
 
@@ -37,7 +37,6 @@ robot_size: 1.0
 # pose generation. For independent_from_scratch runs, set score_* to the
 # *_type branch and pose_* to the *_diffusion branch. If score_ckpt and
 # pose_ckpt are both set, the top-level ckpt override is not used by this task.
-# Strict humanMultiIndependent defaults to *_mode_marginal and *_pose_marginal.
 score_exp_name:
 score_ckpt:
 pose_exp_name:
