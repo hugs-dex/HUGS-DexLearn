@@ -4,9 +4,8 @@ Learning human grasp priors and robot grasp models for HUGS. This repository pro
 
 For the overall project code structure and links to all components, see [HUGS-Main](https://github.com/hugs-dex/HUGS-Main).
 
-- **Human grasp priors:** hierarchical modeling with Independent, Joint, Reverse, and Legacy baselines.
+- **Human grasp priors:** hierarchical modeling with independently trained contact-mode and pose branches.
 - **Robot grasp learning:** Shadow and Leap-SP hands, with Leap compatibility.
-- **Research workflows:** scene-budget prediction and multi-GPU training and sampling.
 
 ## Installation
 
@@ -69,6 +68,11 @@ Grasp stage when you need a learned robot grasp model.
 
 ### Human Prior
 
+The main workflow uses `algo=humanMultiHierar` with Independent training
+(`algo.training.mode=independent_from_scratch`). See the
+[human prior architecture guide](docs/human_prior_architectures.md) for architecture
+options and configuration details.
+
 Preview augmented training samples in Viser (requires MANO models):
 
 ```bash
@@ -91,8 +95,8 @@ python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti \
 
 python -m dexlearn.main task=obj_human_prior_export \
   algo=humanMultiHierar data=humanMulti test_data=DGNMulti \
-  task.score_exp_name=<exp_name>_type task.score_ckpt=000300 \
-  task.pose_exp_name=<exp_name>_diffusion task.pose_ckpt=010000 \
+  task.score_exp_name=<exp_name>_type task.score_ckpt=000100 \
+  task.pose_exp_name=<exp_name>_diffusion task.pose_ckpt=007500 \
   exp_name=<exp_name>
 ```
 
@@ -127,11 +131,11 @@ python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti exp_nam
 # Sample contact mode probability (scores) for all Human objects.
 python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
   algo.model.train_type_only=true 'test_data.grasp_type_lst=["0_any"]' \
-  test_data.test_split=all exp_name=<exp_name>_type ckpt=000300
+  test_data.test_split=all exp_name=<exp_name>_type ckpt=000100
 
 # Sample wrist poses for all contact modes and all Human objects.
 python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-  test_data.test_split=all exp_name=<exp_name>_diffusion ckpt=010000
+  test_data.test_split=all exp_name=<exp_name>_diffusion ckpt=007500
 ```
 
 View the saved samples in Viser (requires MANO models). Run each command
@@ -142,13 +146,13 @@ Use the Selection panel to switch between all, train, and test objects.
 ```bash
 # View contact-mode scores.
 python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-  exp_name=<exp_name>_type ckpt=000300 \
+  exp_name=<exp_name>_type ckpt=000100 \
   task.visualize_mode=random_objects task.target_grasp_type_id=0
 
 # View sampled wrist poses, grouped by object and grasp type.
 python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
   exp_name=<exp_name>_diffusion ckpt=010000 task.visualize_mode=one_object \
-  task.human_scores_exp_name=<exp_name>_type task.human_scores_ckpt=000300
+  task.human_scores_exp_name=<exp_name>_type task.human_scores_ckpt=000100
 ```
 
 The pose view shows the selected object's five type-branch scores in the GUI;
@@ -214,12 +218,13 @@ python -m dexlearn.main task=visualize algo=robotMultiHierar \
 ```
 
 See the [workflow guide](docs/workflows.md) for score sampling, pose evaluation,
-baseline configurations, scene-budget prediction, and multi-GPU execution.
+scene-budget prediction, and multi-GPU execution.
 
 ## Documentation
 
 - [Data, prior, and checkpoint formats](docs/contracts.md)
-- [Workflows and baselines](docs/workflows.md)
+- [Human prior architectures and usage](docs/human_prior_architectures.md)
+- [Workflows](docs/workflows.md)
 - [Validation and known limitations](docs/validation.md)
 
 This release includes source code, configurations, and interface tests. Configuration and CPU model/export tests have been validated; full training and end-to-end GPU workflows have not yet been verified for this release.

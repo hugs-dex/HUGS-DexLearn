@@ -17,16 +17,6 @@ def fail_python(tmp_path):
     return script
 
 
-def test_train_failure_reaches_shell_and_stops_stage_two(tmp_path):
-    env = dict(os.environ, PYTHON_BIN=str(fail_python(tmp_path)), LOG_DIR=str(tmp_path / "logs"), STAGE="all", DRY_RUN="0")
-    proc = subprocess.run(["bash", str(SCRIPTS / "launch_multi_train.sh")], env=env, capture_output=True, text=True)
-    assert proc.returncode == 17
-    assert "stage2" not in proc.stdout
-    logs = list((tmp_path / "logs").glob("*.log"))
-    assert len(logs) == 1
-    assert "intentional-child-failure" in logs[0].read_text()
-
-
 def test_sample_failure_reaches_shell(tmp_path):
     proc = subprocess.run([
         sys.executable, str(SCRIPTS / "launch_multi_sample.py"),
@@ -38,10 +28,9 @@ def test_sample_failure_reaches_shell(tmp_path):
     assert len(list((tmp_path / "logs").glob("*.log"))) == 2
 
 
-def test_dry_runs_do_not_create_logs_or_launch_children(tmp_path):
+def test_sample_dry_run_does_not_create_logs_or_launch_children(tmp_path):
     log_dir = tmp_path / "logs"
-    env = dict(os.environ, PYTHON_BIN=str(fail_python(tmp_path)), LOG_DIR=str(log_dir), DRY_RUN="1", STAGE="all")
-    subprocess.run(["bash", str(SCRIPTS / "launch_multi_train.sh")], env=env, check=True, capture_output=True)
+    env = dict(os.environ, PYTHON_BIN=str(fail_python(tmp_path)), LOG_DIR=str(log_dir), DRY_RUN="1")
     subprocess.run([sys.executable, str(SCRIPTS / "launch_multi_sample.py"), "--exp-names", "example", "--gpus", "0"], env=env, check=True, capture_output=True)
     assert not log_dir.exists()
 

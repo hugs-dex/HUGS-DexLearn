@@ -4,7 +4,6 @@ recursive-include scripts *.py
 recursive-include tests *.py
 recursive-include releases *.json *.txt
 recursive-include dexlearn/config *.yaml
-recursive-include dexlearn/scripts *.sh
 prune third_party
 prune assets
 prune output

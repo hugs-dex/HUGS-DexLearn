@@ -90,8 +90,6 @@ def _infer_type_objective(config):
     if explicit is not None:
         return normalize_type_objective(explicit)
 
-    if model_name in {"HierarchicalModel", "HierarchicalTypeCEModel"}:
-        return "ce"
     if model_name in {
         "HierarchicalTypeObjectiveModel",
         "JointHybridDiffusionModel",

@@ -21,7 +21,6 @@ python scripts/audit_source.py
 python -m pytest tests/public -q
 CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 python -m pytest tests -q
 python -m compileall -q dexlearn tests scripts
-bash -n dexlearn/scripts/launch_multi_train.sh
 python -m build
 CUDA_VISIBLE_DEVICES= python scripts/check_bodex_contract.py --bodex-root /path/to/HUGS-BODex
 CUDA_VISIBLE_DEVICES= python scripts/check_public_data.py --bundle /path/to/data-bundle

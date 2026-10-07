@@ -11,21 +11,8 @@ save_every: 2500
 grad_clip: 10.0
 
 training:
-  # Explicit high-level training route for Human Prior experiments.
-  #
-  # - legacy_shared_encoder_two_stage:
-  #     Keep the previous default route. Stage 1 and Stage 2 are controlled by
-  #     `algo.two_stage.*`, and Stage 1 may include a weak type loss.
-  # - independent_from_scratch:
-  #     Launch two fresh runs with separate experiment names:
-  #     `<exp>_diffusion` and `<exp>_type`.
-  # - joint_single_stage:
-  #     Train type prediction and wrist diffusion jointly inside one model and
-  #     one stage, without Stage 1 / Stage 2 splitting.
-  # - two_stage_diffusion_then_frozen_type_head:
-  #     Reuse `algo.two_stage.*` scheduling, but force Stage 1 to train
-  #     diffusion only and Stage 2 to reset / train the frozen-encoder type
-  #     predictor.
+  # independent_from_scratch: separate type and diffusion runs.
+  # joint_single_stage: train both heads with one shared encoder.
   mode: independent_from_scratch
   independent:
     # both | type | diffusion
@@ -45,31 +32,6 @@ training:
       val_every: 2500
       lr: 0.001
       lr_min: 0.0001
-
-two_stage:
-  # This block is ignored by the default `independent_from_scratch` mode.
-  # It is used only by `legacy_shared_encoder_two_stage` or the explicit
-  # `two_stage_diffusion_then_frozen_type_head` mode. Those modes run Stage 1
-  # and Stage 2 sequentially; the latter forces `stage1.loss_type=0`.
-  enabled: true
-  stage1:
-    exp_suffix: stage1
-    ckpt_step: 10000
-    # Keep diffusion as the primary Stage 1 objective, while giving the shared
-    # encoder a weak Human Prior type-prior signal.
-    loss_diffusion: 1.0
-    loss_type: 0.005
-  stage2:
-    # Stage suffixes distinguish wandb/model-registry entries. Local
-    # checkpoints from both stages are saved under the user provided exp_name.
-    exp_suffix: stage2
-    # These values are consumed by task=train when it launches the frozen
-    # encoder type-predictor finetuning stage.
-    max_iter: 300
-    save_every: 50
-    val_every: 50
-    lr: 0.001
-    lr_min: 0.0001
 
 # Generate a larger candidate pool first, then keep `test_topk` candidates
 # according to `sample_selection.mode`.

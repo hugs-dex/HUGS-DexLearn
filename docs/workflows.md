@@ -10,22 +10,21 @@
 | nflow、diffusion | bodex_shadow 或相应旧机器人数据配置 |
 | humanNflow、humanDiffusion | human |
 | humanBiDiffusion | humanbi |
-| humanMultiDiffusion、humanMultiHierar、humanMultiHierarLegacy、humanMultiIndependent、humanMultiJoint、humanMultiReverse | humanMulti；Legacy 也保留 humanMultiLegacy 数据配置 |
+| humanMultiDiffusion、humanMultiHierar、humanMultiIndependent、humanMultiJoint、humanMultiReverse | humanMulti |
 | robotMultiHierar | shadowMulti、leapspMulti、leapMulti |
 
-旧单手/双手数据配置不能随意与新 humanMulti 模型混搭。全部原 algo 配置保留。
+旧单手/双手数据配置不能随意与新 humanMulti 模型混搭。
 
-## Launcher
+## Multi-GPU Sampling
 
 ```bash
-DRY_RUN=1 STAGE=all bash dexlearn/scripts/launch_multi_train.sh
 python dexlearn/scripts/launch_multi_sample.py --exp-names example --gpus 0 1 --dry-run
 ```
 
-训练脚本保留两阶段语义，参数为 PYTHON_BIN、LOG_DIR、STAGE1_EXP_NAME、STAGE2_EXP_NAME、STAGE1_GPU、STAGE2_GPU、STAGE。
+训练使用下文的 `python -m dexlearn.main task=train` 命令。
 采样脚本使用 --common-extra-overrides、--score-extra-overrides、--pose-extra-overrides 表达实验差异，
 不再按内部 debug 名自动选择模型参数。GPU 数字指 CUDA_VISIBLE_DEVICES 的物理设备选择；子进程内 device=cuda:0。
-dry-run 不创建日志、不运行 GPU；真实执行时训练遇错停止，采样汇总 worker 失败并返回非零。
+dry-run 不创建日志、不运行 GPU；真实采样汇总 worker 失败并返回非零。
 
 ## Arguments
 
@@ -58,6 +57,10 @@ CUDA_VISIBLE_DEVICES=0 python tests/check_robot_dataloader.py data=<DATA_NAME> e
 ### Train
 
 Train a robot grasp model.
+
+`robotMultiHierar` uses `RobotHierarchicalModel` with binary contact-mode
+availability prediction and `single_stage` training. Existing robot checkpoint
+parameter names and shapes are preserved; load them with the current config.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=train algo=robotMultiHierar data=<DATA_NAME> num_workers=24 prefetch_factor=2 exp_name=<EXP_NAME>
@@ -94,6 +97,10 @@ CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualize_mod
 ```
 
 ## Human Workflow
+
+See [Human Prior Architectures](human_prior_architectures.md) for the model
+options, the distinction between Independent training and independent
+marginals, and architecture-specific training and export commands.
 
 ### Preprocess
 
@@ -147,11 +154,6 @@ CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
 CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
   task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
   algo.training.mode=joint_single_stage
-
-# 3. Stage 1 diffusion only, Stage 2 frozen-encoder type-head training
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
-  algo.training.mode=two_stage_diffusion_then_frozen_type_head
 ```
 
 ### Reverse T-to-C Human Prior

@@ -1,5 +1,8 @@
 human: False
 
+training:
+  mode: single_stage
+
 batch_size: 256
 max_iter: 50000
 lr: 0.001
@@ -43,7 +46,7 @@ sample_selection:
   intermediate_topk:
 
 model:
-  name: HierarchicalModel
+  name: RobotHierarchicalModel
   type_objective: availability
   type_availability:
     score_threshold: 0.9

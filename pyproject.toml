@@ -68,7 +68,7 @@ minkowskiengine = { MAX_JOBS = "4" }
 dexlearn = "dexlearn.main:main"
 
 [tool.setuptools.package-data]
-dexlearn = ["config/*.yaml", "config/*/*.yaml", "scripts/*.sh"]
+dexlearn = ["config/*.yaml", "config/*/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["dexlearn*"]

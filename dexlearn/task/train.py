@@ -331,86 +331,16 @@ def _run_id(config: DictConfig, exp_name: str) -> str:
     return f"{config.data_name}_{config.algo_name}_{exp_name}"
 
 
-def _set_exp_name(
-    config: DictConfig,
-    exp_name: str,
-    output_exp_name: str | None = None,
-    ckpt_subdir: str | None = None,
-) -> None:
-    """Set the Hydra experiment name, wandb id, and optional local output id.
-
-    Args:
-        config: Full Hydra config to mutate for one training stage.
-        exp_name: Short experiment name, without data/algo prefixes.
-        output_exp_name: Optional short experiment name for local checkpoint
-            and sample directories. When omitted, ``exp_name`` is used.
-        ckpt_subdir: Optional checkpoint subdirectory under ``ckpts``.
-
-    Returns:
-        None.
-    """
+def _set_exp_name(config: DictConfig, exp_name: str) -> None:
+    """Set the experiment name and corresponding run id for one branch."""
     config.exp_name = exp_name
     config.wandb.id = _run_id(config, exp_name)
-    if output_exp_name is not None:
-        OmegaConf.update(config, "wandb.output_id", _run_id(config, output_exp_name), force_add=True)
-    if ckpt_subdir is not None:
-        OmegaConf.update(config, "wandb.ckpt_subdir", str(ckpt_subdir), force_add=True)
 
 
-def _format_ckpt_step(step_value) -> str:
-    """Format a checkpoint step value as the six-digit Logger filename token.
-
-    Args:
-        step_value: Integer-like checkpoint step from Hydra config.
-
-    Returns:
-        Six-digit string used in checkpoint filenames, such as ``010000``.
-    """
-    return str(int(step_value)).zfill(6)
-
-
-def _stage1_ckpt_path(config: DictConfig, output_exp_name: str) -> str:
-    """Build the Stage 1 checkpoint path consumed by Stage 2.
-
-    Args:
-        config: Full Hydra config containing output folder and two-stage config.
-        output_exp_name: Short experiment name for the shared local output dir.
-
-    Returns:
-        Relative or absolute checkpoint path for the configured Stage 1 step.
-    """
-    ckpt_step = _format_ckpt_step(config.algo.two_stage.stage1.ckpt_step)
-    return os.path.join(config.output_folder, _run_id(config, output_exp_name), "ckpts", "stage1", f"step_{ckpt_step}.pth")
-
-
-def _stage_exp_name(base_exp_name: str, suffix) -> str:
-    """Compose the concrete experiment name for one two-stage phase.
-
-    Args:
-        base_exp_name: User-provided experiment name.
-        suffix: Stage suffix from Hydra config. Empty suffix keeps the base
-            name unchanged.
-
-    Returns:
-        Concrete experiment name used by Logger and wandb.
-    """
+def _branch_exp_name(base_exp_name: str, suffix) -> str:
+    """Append a nonempty branch suffix to the experiment name."""
     suffix_text = "" if suffix is None else str(suffix).strip()
-    if not suffix_text:
-        return base_exp_name
-    return f"{base_exp_name}_{suffix_text}"
-
-
-def _two_stage_stage1_type_loss(config: DictConfig) -> float:
-    """Read the Stage 1 type-prior loss weight.
-
-    Args:
-        config: Hydra config containing ``algo.two_stage.stage1``.
-
-    Returns:
-        Floating-point Stage 1 type loss weight. A value less than or equal to
-        zero means Stage 1 does not train the type predictor.
-    """
-    return float(OmegaConf.select(config, "algo.two_stage.stage1.loss_type", default=0.0))
+    return f"{base_exp_name}_{suffix_text}" if suffix_text else base_exp_name
 
 
 def _training_mode(config: DictConfig) -> str:
@@ -426,17 +356,16 @@ def _training_mode(config: DictConfig) -> str:
         OmegaConf.select(
             config,
             "algo.training.mode",
-            default="legacy_shared_encoder_two_stage",
+            default="single_stage",
         )
     ).strip()
     supported_modes = {
         "joint_coupled_diffusion",
-        "legacy_shared_encoder_two_stage",
+        "single_stage",
         "independent_from_scratch",
         "joint_single_stage",
         "independent_marginals_from_scratch",
         "reverse_independent_from_scratch",
-        "two_stage_diffusion_then_frozen_type_head",
     }
     if mode not in supported_modes:
         raise ValueError(f"Unsupported algo.training.mode={mode}. Expected one of {sorted(supported_modes)}")
@@ -475,7 +404,6 @@ def _build_independent_from_scratch_config(
     """
     branch_config = copy.deepcopy(config)
     _set_exp_name(branch_config, exp_name)
-    branch_config.algo.two_stage.enabled = False
     branch_config.ckpt = None
     branch_config.resume = False
     branch_config.wandb.resume = False
@@ -667,121 +595,6 @@ def _build_reverse_branch_config(config: DictConfig, branch_name: str, exp_name:
     return branch_config
 
 
-def _build_two_stage_config(
-    config: DictConfig,
-    stage_name: str,
-    exp_name: str,
-    output_exp_name: str,
-    ckpt_path: str | None = None,
-) -> DictConfig:
-    """Create a stage-specific config for the integrated two-stage trainer.
-
-    Args:
-        config: User-provided base config.
-        stage_name: Either ``stage1`` or ``stage2``.
-        exp_name: Short experiment name for this stage's wandb/registry id.
-        output_exp_name: Short experiment name for the shared local output dir.
-        ckpt_path: Stage 1 checkpoint path for Stage 2, otherwise ``None``.
-
-    Returns:
-        A deep-copied and mutated config for one concrete training stage.
-    """
-    stage_config = copy.deepcopy(config)
-    _set_exp_name(stage_config, exp_name, output_exp_name=output_exp_name, ckpt_subdir=stage_name)
-    stage_config.algo.two_stage.enabled = False
-
-    if stage_name == "stage1":
-        stage1_loss_type = _two_stage_stage1_type_loss(stage_config)
-        stage1_loss_diffusion = float(
-            OmegaConf.select(stage_config, "algo.two_stage.stage1.loss_diffusion", default=1.0)
-        )
-        stage_config.ckpt = config.ckpt
-        stage_config.algo.model.train_type_only = False
-        stage_config.algo.loss_weight.loss_diffusion = stage1_loss_diffusion
-        stage_config.algo.loss_weight.loss_type = stage1_loss_type
-        stage_config.algo.freeze.type_classifier = stage1_loss_type <= 0.0
-        stage_config.algo.freeze.backbone = False
-        stage_config.algo.freeze.grasp_type_emb = False
-        stage_config.algo.freeze.output_head = False
-        stage_config.model_registry.key_features = (
-            f"integrated_stage1_diffusion_encoder_10000iter_save2500_"
-            f"loss_diffusion{stage1_loss_diffusion:g}_loss_type{stage1_loss_type:g}_"
-            "record_uniform_soft_labels"
-        )
-        return stage_config
-
-    if stage_name == "stage2":
-        if ckpt_path is None:
-            raise ValueError("Stage 2 requires a Stage 1 checkpoint path")
-        reset_type_head = _two_stage_stage1_type_loss(stage_config) <= 0.0
-        stage_config.ckpt = ckpt_path
-        stage_config.resume = False
-        stage_config.wandb.resume = False
-        stage_config.algo.model.train_type_only = True
-        stage_config.algo.loss_weight.loss_diffusion = 0.0
-        stage_config.algo.loss_weight.loss_type = 1.0
-        stage_config.algo.ckpt_load.load_optimizer = False
-        stage_config.algo.ckpt_load.reset_iter = True
-        stage_config.algo.ckpt_load.strict_model = not reset_type_head
-        stage_config.algo.ckpt_load.ignore_prefixes = ["type_classifier"] if reset_type_head else []
-        stage_config.algo.freeze.backbone = True
-        stage_config.algo.freeze.type_classifier = False
-        stage_config.algo.freeze.grasp_type_emb = True
-        stage_config.algo.freeze.output_head = True
-        stage_config.algo.max_iter = stage_config.algo.two_stage.stage2.max_iter
-        stage_config.algo.save_every = stage_config.algo.two_stage.stage2.save_every
-        stage_config.algo.val_every = stage_config.algo.two_stage.stage2.val_every
-        stage_config.algo.lr = stage_config.algo.two_stage.stage2.lr
-        stage_config.algo.lr_min = stage_config.algo.two_stage.stage2.lr_min
-        stage_config.model_registry.key_features = (
-            "integrated_stage2_frozen_stage1_encoder_train_yaml_configured_"
-            f"{'reset' if reset_type_head else 'continued'}_type_head_record_uniform_soft_labels"
-        )
-        return stage_config
-
-    raise ValueError(f"Unsupported two-stage stage_name={stage_name}")
-
-
-def _task_train_two_stage(config: DictConfig, stage1_loss_type_override: float | None = None) -> None:
-    """Run Stage 1 and Stage 2 sequentially from one task=train launch.
-
-    Args:
-        config: User-provided base Hydra config with ``algo.two_stage.enabled``.
-        stage1_loss_type_override: Optional override for the Stage 1 type loss.
-            ``0.0`` reproduces the pure-diffusion Stage 1 route.
-
-    Returns:
-        None.
-    """
-    if stage1_loss_type_override is not None:
-        config = copy.deepcopy(config)
-        config.algo.two_stage.stage1.loss_type = float(stage1_loss_type_override)
-
-    base_exp_name = str(config.exp_name)
-    stage1_exp_name = _stage_exp_name(base_exp_name, config.algo.two_stage.stage1.exp_suffix)
-    stage2_exp_name = _stage_exp_name(base_exp_name, config.algo.two_stage.stage2.exp_suffix)
-    ckpt_path = _stage1_ckpt_path(config, base_exp_name)
-
-    print(f"Two-stage training enabled: Stage 1 exp_name={stage1_exp_name}, output_exp_name={base_exp_name}")
-    stage1_config = _build_two_stage_config(config, "stage1", stage1_exp_name, output_exp_name=base_exp_name)
-    _task_train_single(stage1_config)
-    wandb.finish()
-
-    if not os.path.exists(ckpt_path):
-        raise FileNotFoundError(f"Stage 1 checkpoint not found for Stage 2: {ckpt_path}")
-
-    print(f"Two-stage training enabled: Stage 2 exp_name={stage2_exp_name}, output_exp_name={base_exp_name}, ckpt={ckpt_path}")
-    stage2_config = _build_two_stage_config(
-        config,
-        "stage2",
-        stage2_exp_name,
-        output_exp_name=base_exp_name,
-        ckpt_path=ckpt_path,
-    )
-    _task_train_single(stage2_config)
-    wandb.finish()
-
-
 def _task_train_independent_from_scratch(config: DictConfig) -> None:
     """Train diffusion and type models independently from scratch.
 
@@ -796,8 +609,8 @@ def _task_train_independent_from_scratch(config: DictConfig) -> None:
     diffusion_suffix = OmegaConf.select(config, "algo.training.independent.diffusion_exp_suffix", default="diffusion")
     type_suffix = OmegaConf.select(config, "algo.training.independent.type_exp_suffix", default="type")
     exp_name_by_branch = {
-        "diffusion": _stage_exp_name(base_exp_name, diffusion_suffix),
-        "type": _stage_exp_name(base_exp_name, type_suffix),
+        "diffusion": _branch_exp_name(base_exp_name, diffusion_suffix),
+        "type": _branch_exp_name(base_exp_name, type_suffix),
     }
 
     for branch_name in _independent_from_scratch_branches(config):
@@ -813,7 +626,7 @@ def _task_train_reverse_independent_from_scratch(config: DictConfig) -> None:
     base_exp_name = str(config.exp_name)
     for branch_name in _reverse_training_branches(config):
         suffix = str(OmegaConf.select(config, f"algo.training.{branch_name}.exp_suffix"))
-        branch_exp_name = _stage_exp_name(base_exp_name, suffix)
+        branch_exp_name = _branch_exp_name(base_exp_name, suffix)
         print(f"Reverse T-to-C branch: {branch_name} exp_name={branch_exp_name}")
         branch_config = _build_reverse_branch_config(config, branch_name, branch_exp_name)
         _task_train_single(branch_config)
@@ -825,7 +638,7 @@ def _task_train_independent_marginals_from_scratch(config: DictConfig) -> None:
     base_exp_name = str(config.exp_name)
     for branch_name in _independent_marginal_training_branches(config):
         suffix = str(OmegaConf.select(config, f"algo.training.{branch_name}.exp_suffix"))
-        branch_exp_name = _stage_exp_name(base_exp_name, suffix)
+        branch_exp_name = _branch_exp_name(base_exp_name, suffix)
         print(f"Independent C-T branch: {branch_name} exp_name={branch_exp_name}")
         branch_config = _build_independent_marginal_branch_config(
             config,
@@ -1010,7 +823,7 @@ def _task_train_single(config: DictConfig):
 
 
 def task_train(config: DictConfig):
-    """Run training according to the configured Human Prior training mode.
+    """Run single-model training or the configured Human Prior branches.
 
     Args:
         config: Full Hydra config for ``task=train``.
@@ -1020,10 +833,7 @@ def task_train(config: DictConfig):
     """
     mode = _training_mode(config)
 
-    if mode == "legacy_shared_encoder_two_stage":
-        if bool(OmegaConf.select(config, "algo.two_stage.enabled", default=False)):
-            _task_train_two_stage(config)
-            return
+    if mode == "single_stage":
         _task_train_single(config)
         return
 
@@ -1045,7 +855,6 @@ def task_train(config: DictConfig):
 
     if mode == "joint_single_stage":
         config = copy.deepcopy(config)
-        config.algo.two_stage.enabled = False
         config.algo.model.train_type_only = False
         config.algo.freeze.backbone = False
         config.algo.freeze.type_classifier = False
@@ -1056,12 +865,6 @@ def task_train(config: DictConfig):
                 "joint_single_stage_shared_encoder_type_and_diffusion_record_uniform_soft_labels"
             )
         _task_train_single(config)
-        return
-
-    if mode == "two_stage_diffusion_then_frozen_type_head":
-        config = copy.deepcopy(config)
-        config.algo.two_stage.enabled = True
-        _task_train_two_stage(config, stage1_loss_type_override=0.0)
         return
 
     raise ValueError(f"Unhandled training mode: {mode}")
