@@ -1,19 +1,21 @@
-# 完整工作流参考
+# Workflow Guide
 
-下列训练、采样、导出、评估与可视化接口随源码保留，运行前按 [README 安装说明](../README.md#installation) 准备所需输入。
-这些命令不是本次真实训练验证证据。预处理会修改输入 grasp，应在明确的数据工作副本上使用。
+Prepare the environment with the [installation guide](installation.md) and
+inputs with the [data contracts](contracts.md). These are usage instructions;
+see [validation](validation.md) for the workflows actually verified in this release.
 
-## Algorithm 与 data 配对
+## Algorithm and Data Configurations
 
 | Algorithm | Data |
 | --- | --- |
-| nflow、diffusion | bodex_shadow 或相应旧机器人数据配置 |
-| humanNflow、humanDiffusion | human |
+| nflow, diffusion | bodex_shadow or the corresponding older robot data config |
+| humanNflow, humanDiffusion | human |
 | humanBiDiffusion | humanbi |
-| humanMultiDiffusion、humanMultiHierar、humanMultiJoint、humanMultiReverse | humanMulti |
-| robotMultiHierar | shadowMulti、leapspMulti、leapMulti |
+| humanMultiDiffusion, humanMultiHierar, humanMultiJoint, humanMultiReverse | humanMulti |
+| robotMultiHierar | shadowMulti, leapspMulti, leapMulti |
 
-旧单手/双手数据配置不能随意与新 humanMulti 模型混搭。
+Older single-hand and bimanual data configurations are not interchangeable
+with the `humanMulti` interface.
 
 ## Multi-GPU Sampling
 
@@ -21,237 +23,253 @@
 python dexlearn/scripts/launch_multi_sample.py --exp-names example --gpus 0 1 --dry-run
 ```
 
-训练使用下文的 `python -m dexlearn.main task=train` 命令。
-采样脚本使用 --common-extra-overrides、--score-extra-overrides、--pose-extra-overrides 表达实验差异，
-不再按内部 debug 名自动选择模型参数。GPU 数字指 CUDA_VISIBLE_DEVICES 的物理设备选择；子进程内 device=cuda:0。
-dry-run 不创建日志、不运行 GPU；真实采样汇总 worker 失败并返回非零。
+Use `--common-extra-overrides`, `--score-extra-overrides`, and
+`--pose-extra-overrides` for experiment-specific settings. GPU numbers select
+physical devices through `CUDA_VISIBLE_DEVICES`; each child uses `device=cuda:0`.
+The dry run prints commands without creating logs or running GPU tasks.
+Actual sampling reports worker failures and returns a nonzero exit status.
+Train with the `python -m dexlearn.main task=train` commands below.
 
-## Arguments
+## Arguments and Outputs
 
-- `exp_name`: experiment name used in output paths
-- `DATA_NAME`: training dataset config name
-- `TEST_DATA_NAME`: test dataset config name
-- `ckpt`: checkpoint step or checkpoint path to load
+- `exp_name`: experiment name used in output paths.
+- `data` and `test_data`: training and test dataset configuration names.
+- `ckpt`: checkpoint step (e.g. `007500`) or checkpoint file path.
+- Training checkpoints: `output/<data>_<algo>_<exp_name>/ckpts/`.
+- Saved samples: `output/<data>_<algo>_<exp_name>/tests/step_<ckpt>/`.
 
-Availabel configs for robot workflow:
-
-- `DATA_NAME`: `shadowMulti`, `leapMulti`
-- `TEST_DATA_NAME`: `shadowMulti`, `leapMulti`
-
-## Outputs
-
-- Training checkpoints are saved under `output/<data>_<algo>_<exp_name>/ckpts/`
-- Sampled results are saved under `output/<data>_<algo>_<exp_name>/tests/step_<ckpt>/`
-- `visualize` reads sampled grasps from the corresponding `tests` directory
+`visualize`, `type_eval`, and `diffusion_eval` read saved samples. Run
+`task=sample` with the same experiment and checkpoint first.
+Append `--cfg job --resolve` to a main command to inspect its configuration
+without running the task.
 
 ## Robot Workflow
 
+Examples use Shadow. For Leap-SP, replace both `data=shadowMulti` and
+`test_data=shadowMulti` with `leapspMulti` where present; `leapMulti` remains
+available for compatibility. Robot training grasps and assets must be prepared
+separately, as described in [Data and Assets](../README.md#data-and-assets).
+
 ### Check Dataloader
 
-Inspect robot dataloader samples before training or debugging. The script buffers samples so visualization follows a fixed grasp-type order such as `1 2 3 4 5`, then `1 2 3 4 5` again when available.
+Inspect robot samples before training. The script buffers samples to display
+a fixed grasp-type order (`1 2 3 4 5`) when available.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python tests/check_robot_dataloader.py data=<DATA_NAME> exp_name=<EXP_NAME>
+python tests/check_robot_dataloader.py data=shadowMulti exp_name=shadow
 ```
 
 ### Train
 
-Train a robot grasp model.
-
-`robotMultiHierar` uses `RobotHierarchicalModel` with binary contact-mode
-availability prediction and `single_stage` training. Existing robot checkpoint
-parameter names and shapes are preserved; load them with the current config.
+`robotMultiHierar` uses `RobotHierarchicalModel`, binary contact-mode
+availability prediction, and `single_stage` training. Existing robot checkpoint
+parameter names and shapes are preserved.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=train algo=robotMultiHierar data=<DATA_NAME> num_workers=24 prefetch_factor=2 exp_name=<EXP_NAME>
+python -m dexlearn.main task=train algo=robotMultiHierar data=shadowMulti exp_name=shadow
 ```
 
 ### Sample
 
-Generate robot grasps from a trained checkpoint.
+The default training schedule runs for 50,000 iterations. Sample that checkpoint:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=sample algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME>
-
-# Override the availability score threshold used when grasp_type_id=0 samples
-# all model-predicted available real grasp types. The robotMultiHierar default is 0.5.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=sample algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME> algo.model.type_availability.score_threshold=0.35
+python -m dexlearn.main task=sample algo=robotMultiHierar \
+  data=shadowMulti test_data=shadowMulti exp_name=shadow ckpt=050000
 ```
+
+For `grasp_type_id=0`, the model samples its predicted available real grasp types.
+The default availability threshold is `0.9`; override it with
+`algo.model.type_availability.score_threshold=0.35` if needed.
+The default selection keeps 10 candidates per available type.
 
 ### Visualize
 
-Visualize sampled robot grasps. The current visualization sampler is controlled by `task.visualize_mode`; the old group-balanced grasp-type cycling behavior is deprecated.
-
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME> wandb.mode=disabled
-
-# e.g., python dexlearn/main.py task=visualize algo=robotMultiHierar data=leapMulti test_data=leapMulti exp_name=dataset_full_1
-
-# Web visualizer. The browser UI can switch views and apply object or grasp-type selections.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualizer=viser algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME>
-
-# New sample selection modes.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualize_mode=random_object task.max_grasps=20 algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME>
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualize_mode=one_object task.object_id=<OBJECT_ID> task.max_grasps=20 algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME>
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=visualize task.visualize_mode=grasp_type task.target_grasp_type_id=<1-5> task.max_grasps=20 algo=robotMultiHierar data=<DATA_NAME> test_data=<TEST_DATA_NAME> exp_name=<EXP_NAME>
+python -m dexlearn.main task=visualize algo=robotMultiHierar \
+  data=shadowMulti test_data=shadowMulti exp_name=shadow ckpt=050000
 ```
+
+The default Viser viewer opens at `http://localhost:8080`. Its Selection panel
+switches views and applies object or grasp-type selections. Set
+`task.viser_port=8081` to use another port. Useful overrides:
+
+- `task.visualize_mode=random_objects task.max_grasps=20`
+- `task.visualize_mode=one_scene` (select a scene in the GUI)
+- `task.visualize_mode=grasp_type task.target_grasp_type_id=1`
 
 ## Human Workflow
 
-See [Human Prior Architectures](human_prior_architectures.md) for the model
-options and architecture-specific training and export commands.
+The default `humanMultiHierar` prior trains independent type and conditional
+pose branches. [Human prior architectures](human_prior_architectures.md)
+covers the available model options and architecture-specific commands.
 
 ### Preprocess
 
-Compute and save `index_mcp_pos` into the source human grasp files before training with index-MCP positions.
+When using `data.hand_pos_source=index_mcp` (the default), input grasps must
+contain `index_mcp_pos`. If absent, compute it with MANO before training.
+This command modifies the source grasp files; use a working copy of the data.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=human_preprocess data=humanMulti exp_name=<EXP_NAME>
-
-# e.g., CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=human_preprocess data=humanMulti exp_name=example
+python -m dexlearn.main task=human_preprocess data=humanMulti exp_name=human_preprocess
 ```
 
 ### Check Dataloader
 
-Inspect human dataloader samples after preprocessing and before training. This visualization follows the configured `hand_pos_source` in `dexlearn/config/data/humanMulti.yaml`.
+Preview augmented training samples, using the configured `hand_pos_source`.
+This is a data preview and requires MANO models, but no checkpoint.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m dexlearn.scripts.check_human_dataloader data=humanMulti data.hand_pos_source=<wrist/index_mcp>
-
-# e.g.: CUDA_VISIBLE_DEVICES=0 python -m dexlearn.scripts.check_human_dataloader data=humanMulti data.hand_pos_source=index_mcp
+python -m dexlearn.scripts.check_human_dataloader data=humanMulti
 ```
 
-### Train
+Open `http://localhost:8080`. Use **Next Batch** to browse and
+**Display → View → single** to inspect one sample. Optional overrides:
+`+check_batch_size=8`, `+viser_port=8081`, and `data.hand_pos_source=wrist`
+(to preview wrist positions instead of index-MCP positions).
+
+### Train and Evaluate
+
+Use the default `train` split for held-out evaluation. Keep this experiment
+separate from the [full-data synthesis prior](#object-human-prior-train-and-export).
+The default `independent_from_scratch` mode starts two separate runs with
+checkpoint loading and resume disabled: `human_prior_eval_diffusion`
+(10,000 iterations) and `human_prior_eval_type` (300 iterations).
+Use new experiment names to keep outputs from different runs separate.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME>
-
-# e.g.: CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME>
+python -m dexlearn.main task=train algo=humanMultiHierar data=humanMulti exp_name=human_prior_eval
 ```
 
-Human Prior training mode can be switched with `algo.training.mode`:
+To train only one branch, append `algo.training.independent.run=type` or
+`algo.training.independent.run=diffusion`.
+The examples below select score checkpoint `000100` and pose checkpoint
+`007500`; use the same selected steps for sampling, viewing, and evaluation.
+
+#### Sample Scores and Poses
+
+Sample `0_any` scores and poses for all five contact modes on `all` Human objects:
 
 ```bash
-# 1. two independent from-scratch runs: <EXP_NAME>_diffusion and <EXP_NAME>_type
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
-  algo.training.mode=independent_from_scratch
+python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  algo.model.train_type_only=true 'test_data.grasp_type_lst=["0_any"]' \
+  test_data.test_split=all exp_name=human_prior_eval_type ckpt=000100
 
-# 1b. only train the faster type-predictor branch
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
-  algo.training.mode=independent_from_scratch \
-  algo.training.independent.run=type
-
-# 1c. only train the diffusion branch
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
-  algo.training.mode=independent_from_scratch \
-  algo.training.independent.run=diffusion
-
-# 2. one shared model, joint single-stage training
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiHierar data=humanMulti exp_name=<EXP_NAME> \
-  algo.training.mode=joint_single_stage
+python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  test_data.test_split=all exp_name=human_prior_eval_diffusion ckpt=007500
 ```
 
-### Reverse T-to-C Human Prior
+Pose sampling defaults to 100 candidates per type and keeps 20 using
+`algo.sample_selection.mode=prob_pose`: first keep the top 50 by probability,
+then select diverse poses. Alternatives include `prob` (probability ranking),
+`random`, and `pose_diversity` (diversity without probability preselection).
 
-`humanMultiReverse` implements the independent Reverse factorization
-`p(T|o) p(c|T,o)`. It launches two from-scratch runs by default:
-`<EXP_NAME>_pose_marginal` trains the object-only marginal pose diffusion for
-10,000 iterations, then `<EXP_NAME>_type_posterior` trains the independent
-hard-label pose-conditioned posterior for 300 iterations. Both branches use
-record-uniform sampling without type balancing or pose-group soft labels.
+#### View Saved Samples
+
+Run each viewer separately and open `http://localhost:8080` (requires MANO).
+The Selection panel switches between all, train, and test objects.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiReverse data=humanMulti \
-  data.sampling.train_split=all \
-  exp_name=<EXP_NAME>
+# Contact-mode scores on point clouds.
+python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_type ckpt=000100 \
+  task.visualize_mode=random_objects task.target_grasp_type_id=0
 
-# Optional: launch only one independent branch.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiReverse data=humanMulti \
-  data.sampling.train_split=all \
-  algo.training.run=pose_marginal \
-  exp_name=<EXP_NAME>
-
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiReverse data=humanMulti \
-  data.sampling.train_split=all \
-  algo.training.run=type_posterior \
-  exp_name=<EXP_NAME>
+# Generated poses, grouped by object and grasp type.
+python -m dexlearn.main task=visualize algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_diffusion ckpt=007500 task.visualize_mode=one_object \
+  task.human_scores_exp_name=human_prior_eval_type task.human_scores_ckpt=000100
 ```
 
-The posterior owns a separate checkpointed 24D pose normalization. It trains
-on clean GT centered canonical `T24`, while inference consumes generated
-centered canonical `T24` from the marginal diffusion; this GT-to-generated pose
-shift is the intentional initial train-inference gap. The marginal generator
-does not accept a contact-mode id or mode-specific sampling path.
+The pose viewer shows five type-branch scores for the selected object: means
+from up to 20 `0_any` samples, rather than per-pose scores. The score view
+labels use the same five scores as an ordered array. The score directory is
+derived from the experiment name and checkpoint; set `task.human_scores_dir`
+only for a custom sample directory.
 
-### Joint Contact-Mode / Wrist-Pose Human Prior
+The Human Viser viewer supports `random_objects` and `one_object` views.
+Use the Selection panel to choose an object or grasp type, and
+`task.viser_port=8081` to use a different port.
 
-`humanMultiJoint` implements the coupled factorization `p(c,T|o)` with one
-checkpoint. Contact mode is a five-class categorical diffusion state and wrist
-pose is the existing Gaussian T24 state. Every reverse step evaluates both
-heads from the same old `(c_t, T_t)` state before synchronously updating them;
-`0_any` is only a test-loader placeholder and is never generated.
+#### Evaluate Saved Samples
+
+`type_eval` reports Human train/test score metrics by default.
+`task.exclude_both_three=true` adds a report with that class removed and the
+remaining four probabilities renormalized. DGN diagnostics and the scale-anchor
+baseline are optional and disabled by default.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=train algo=humanMultiJoint data=humanMulti \
-  data.sampling.train_split=all \
-  exp_name=<EXP_NAME>
+python -m dexlearn.main task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_type ckpt=000100 task.exclude_both_three=true
+
+python -m dexlearn.main task=diffusion_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_diffusion ckpt=007500
 ```
 
-The initial comparison budget is 10,000 iterations, record-uniform data,
-`loss_pose_v + loss_categorical`, and the same `WrappedMinkUNet` object encoder
-used by the Proposed baseline.
+`diffusion_eval` measures record-level pose recall and index-MCP-to-object-surface
+sanity metrics on the Human `test` split. It uses saved index-MCP translations
+and wrist quaternions, without generating new samples or running MANO recovery.
 
-### Sample
+Samples live under
+`output/humanMulti_humanMultiHierar_human_prior_eval_type/tests/step_000100/`
+and
+`output/humanMulti_humanMultiHierar_human_prior_eval_diffusion/tests/step_007500/`,
+with dataset and grasp-type subdirectories. Score reports go in `evaluation/`
+under the type step directory; pose reports go in `diffusion_eval/` under the
+pose step directory.
 
-For the default `algo.training.mode=independent_from_scratch`, diffusion poses
-and grasp-type scores are saved by two different runs. If the base experiment
-name is `<EXP_NAME>`, use `<EXP_NAME>_diffusion` for wrist/index-MCP pose
-sampling and `<EXP_NAME>_type` for Human Prior grasp-type score sampling.
+#### Optional DGN Score Diagnostics
+
+DGN has no human grasp labels. Sample its scores first, then explicitly enable
+the diagnostic section alongside Human evaluation:
 
 ```bash
-# 1. Sample typed wrist/index-MCP poses from the diffusion checkpoint.
-# humanMultiHierar defaults to test_grasp_num=100, test_topk=20, and
-# algo.sample_selection.mode=pose_diversity.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=sample data=humanMulti algo=humanMultiHierar test_data=humanMulti \
-  algo.batch_size=1024 \
-  'test_data.grasp_type_lst=["1_right_two","2_right_three","3_right_full","4_both_three","5_both_full"]' \
-  ckpt=007500 \
-  exp_name=<EXP_NAME>_diffusion
+python -m dexlearn.main task=sample algo=humanMultiHierar data=humanMulti test_data=DGNMulti \
+  algo.model.train_type_only=true 'test_data.grasp_type_lst=["0_any"]' \
+  test_data.test_split=all exp_name=human_prior_eval_type ckpt=000100
 
-# Optional pose candidate selection overrides:
-#   algo.sample_selection.mode=prob            # legacy log-prob top-20
-#   algo.sample_selection.mode=random          # random 20 from 100 candidates
-#   algo.sample_selection.mode=pose_diversity  # default diverse 20 from 100
-
-# 2. Sample grasp-type scores from the type checkpoint.
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
-  task=sample data=humanMulti algo=humanMultiHierar test_data=humanMulti \
-  algo.model.train_type_only=true \
-  algo.batch_size=1024 \
-  'test_data.grasp_type_lst=["0_any"]' \
-  ckpt=000100 \
-  exp_name=<EXP_NAME>_type
+python -m dexlearn.main task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_type ckpt=000100 task.run_dgn_1b=true
 ```
 
+#### Optional Human Scale-Anchor Baseline
+
+This baseline uses object-scale and grasp-type statistics generated by
+`task=stat` in the separate HumanGraspData preprocessing repository. Generate
+them from the same formatted human data and its `object/valid_split/train.json`.
+The JSON contains `all` and `train` scopes; the baseline uses `train` statistics
+to predict grasp-type distributions from the nearest scale anchor on `test` objects.
+
+After setting up HumanGraspData, run this command **from that repository**:
+
+```bash
+python src/main.py task=stat exp_name=scale_anchor task.data_name=Ours \
+  task.data_path="${HUGS_DATASET_ROOT}/OurHumanGraspFormat" \
+  task.object_scale_type_distribution_path="${HUGS_DATASET_ROOT}/metadata/Ours_object_scale_type_distribution.json"
+```
+
+Then return to DexLearn and enable the baseline:
+
+```bash
+python -m dexlearn.main task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
+  exp_name=human_prior_eval_type ckpt=000100 task.run_human_scale_anchor_baseline=true
+```
+
+It writes `evaluation_human_scale_anchor_baseline_{predictions,metrics,summary}.csv`
+in the type branch's `evaluation/` directory. For a JSON stored elsewhere, set
+`task.human_scale_anchor_distribution_json=/path/to/statistics.json`.
+If the JSON is absent, the baseline is skipped.
 
 ### Object Human Prior Train and Export
 
-Train:
+Train on all Human objects for downstream synthesis, rather than held-out evaluation:
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
   task=train algo=humanMultiHierar data=humanMulti \
   algo.training.mode=independent_from_scratch \
   data.sampling.train_split=all \
-  exp_name=human_prior_<x>
+  exp_name=human_prior_full
 ```
 
 Export object-scene human prior scores and hand-position seeds for downstream
@@ -274,14 +292,14 @@ CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py \
   test_data.test_split=all \
   algo.batch_size=1024 \
   task.skip_existing=false \
-  task.robot_name=leap \
-  task.robot_size=1.8 \
+  task.robot_name=shadow_hand \
+  task.robot_size=1.0 \
   task.score_ckpt=000100 \
   task.pose_ckpt=007500 \
   wandb.mode=disabled \
-  exp_name=example_prior \
-  task.score_exp_name=example_prior_type \
-  task.pose_exp_name=example_prior_diffusion
+  exp_name=human_prior_full \
+  task.score_exp_name=human_prior_full_type \
+  task.pose_exp_name=human_prior_full_diffusion
 ```
 
 Outputs are written to
@@ -293,7 +311,7 @@ for independent score/pose export, unless `task.output_dir` is set. When
 override is not used. Per-scene files are stored under a subdirectory named
 after `test_data.object_path`'s final component and `task.robot_name`,
 preserving the original scene id hierarchy, for example
-`.../step_<POSE_CKPT>_<SCORE_CKPT>/DGN_5k/leap_hand/<object>/<env>/<scene>.npy`.
+`.../step_<POSE_CKPT>_<SCORE_CKPT>/DGN_2k/shadow_hand/<object>/<env>/<scene>.npy`.
 
 For Reverse export, use the two Reverse checkpoints with
 `algo=humanMultiReverse`:
@@ -353,6 +371,9 @@ the existing `budget_scores`, `index_mcp_pos`, `wrist_quat`, and
 `raw_joint/<scene>.npz`; the compact record saves its relative path, SHA-256,
 selected raw indices, replacement mask, zero-support mask, and checkpoint hash.
 
+For a small initial export, append `test_data.test_scene_num=1` to export
+one scene. Remove the override to export the full configured set.
+
 To export an exact bounded scene set, set
 `test_data.test_scene_list_path=<SCENE_LIST_JSON>` and leave
 `test_data.test_scene_num=0`. The JSON may be a plain list of scene ids, or an
@@ -372,18 +393,19 @@ explicit `factorization=reverse_T_to_C` tag. Long training, batch export, GPU
 synthesis, and benchmark runs should still be launched only after their output
 roots and resources are approved.
 
-Visualize an exported object human prior:
+Visualize an exported object human prior (requires MANO):
+
 ```bash
 python dexlearn/main.py \
   task=visualize_human_prior \
   data=humanMulti \
   algo=humanMultiHierar \
-  task.prior_dir=output/humanMulti_humanMultiHierar_example_prior/obj_human_prior/step_007500_000100/DGN_2k/shadow
+  task.prior_dir=output/humanMulti_humanMultiHierar_human_prior_full/obj_human_prior/step_007500_000100/DGN_2k/shadow_hand \
+  task.visualize_mode=one_scene
 ```
 
-For this task, `dexlearn/config/task/visualize_human_prior.yaml` should set
-`task.prior_dir` to the full robot-specific export directory, such as
-`output/humanMulti_humanMultiHierar_example_prior/obj_human_prior/step_007500_000100/DGN_2k/shadow`.
+For this task, set `task.prior_dir` to the full robot-specific export directory, such as
+`output/humanMulti_humanMultiHierar_human_prior_full/obj_human_prior/step_007500_000100/DGN_2k/shadow_hand`.
 `visualize_human_prior` then reads per-scene files directly from
 `<prior_dir>/<object>/...`. Do not pass separate `task.step` or
 `task.robot_name` overrides for visualization; the step, asset set, and robot
@@ -391,6 +413,9 @@ namespace are already encoded in the full path. The export also writes
 `manifest.json`, `scene_index.json`, and `scene_budget_scores.jsonl`.
 Visualization does not depend on these summary files, but they are kept for
 reproducibility, audit/debug metadata, and downstream score evaluation.
+Open `http://localhost:8080`, select a scene and **Grasp Type**, and click
+**Apply Selection**. Hand meshes use fixed, flat fingers to illustrate the
+exported positions and orientations.
 In the web Selection panel, Grasp Type `0_any` shows score-only records for
 `random_objects`; selecting a concrete type renders one random wrist pose of
 that type per object. In `one_scene`, `0_any` shows all real types and concrete
@@ -398,51 +423,6 @@ types show only that row; Next Batch advances the pose sample window within the
 same scene, and Next Scene selects another random scene while preserving the
 current grasp-type selection.
 
-
-### Visualize
-
-```bash
-python dexlearn/main.py task=visualize data=humanMulti algo=humanMultiHierar test_data=<TEST_DATA> exp_name=<EXP_NAME>
-
-# e.g, python dexlearn/main.py task=visualize data=humanMulti algo=humanMultiHierar test_data=humanMulti ckpt=010000 exp_name=<EXP_NAME>
-
-# Web visualizer with multi-scene layout and runtime object or grasp-type selection.
-python dexlearn/main.py task=visualize task.visualizer=viser task.viser_port=8080 task.viser_display_mode=single task.viser_scene_id=0 data=humanMulti algo=humanMultiHierar test_data=<TEST_DATA> exp_name=<EXP_NAME>
-
-# New sample selection modes.
-python dexlearn/main.py task=visualize task.visualize_mode=random_object task.max_grasps=20 data=humanMulti algo=humanMultiHierar test_data=<TEST_DATA> exp_name=<EXP_NAME>
-python dexlearn/main.py task=visualize task.visualize_mode=one_object task.object_id=<OBJECT_ID> task.max_grasps=20 data=humanMulti algo=humanMultiHierar test_data=<TEST_DATA> exp_name=<EXP_NAME>
-python dexlearn/main.py task=visualize task.visualizer=viser task.visualize_mode=one_object_multi_seq task.object_id=obj_0_seq_0 task.max_grasps=20 data=humanMulti algo=humanMultiHierar test_data=humanMulti exp_name=<EXP_NAME>
-python dexlearn/main.py task=visualize task.visualize_mode=grasp_type task.target_grasp_type_id=<1-5> task.max_grasps=20 data=humanMulti algo=humanMultiHierar test_data=<TEST_DATA> exp_name=<EXP_NAME>
-```
-
-### Evaluate
-
-Evaluate an already sampled human model run. Run `task=sample` first; this task
-does not generate samples.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python dexlearn/main.py task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti wandb.mode=disabled exp_name=<EXP_NAME> ckpt=<CKPT>
-
-# Example:
-python dexlearn/main.py \
-    task=type_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-    exp_name=debug26 ckpt=010000 wandb.mode=disabled
-```
-
-### Diffusion Eval
-
-Evaluate saved human diffusion index-MCP pose samples on `humanMulti` using
-record-level recall plus index-MCP-to-object-surface sanity metrics. Run
-`task=sample` first; this task does not generate samples or run MANO recovery.
-Translation metrics use saved/generated index-MCP positions; rotation metrics
-use saved/generated wrist quaternions.
-
-```bash
-python dexlearn/main.py \
-    task=diffusion_eval algo=humanMultiHierar data=humanMulti test_data=humanMulti \
-    exp_name=<EXP_NAME> ckpt=<CKPT> wandb.mode=disabled
-```
 
 ### Scene Budget
 

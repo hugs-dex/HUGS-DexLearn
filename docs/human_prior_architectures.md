@@ -136,7 +136,7 @@ synthesis should keep `human_prior.min_type_budget=0`.
 For Reverse, generic `task=sample` defaults to the pose marginal. Use
 `task=obj_human_prior_export` to combine its pose and posterior checkpoints.
 For the main prior's separate score/pose sampling and evaluation commands,
-see the [README](../README.md#train-and-evaluate). Export layout and detailed
+see [Train and Evaluate](workflows.md#train-and-evaluate). Export layout and detailed
 selection behavior are documented in [workflows](workflows.md#object-human-prior-train-and-export)
 and [data contracts](contracts.md).
 
